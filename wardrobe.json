@@ -1,0 +1,549 @@
+[
+    {
+        "id": 1,
+        "filename": "img_20260206_202228.jpg",
+        "image_path": "img\\img_20260206_202228.jpg",
+        "analysis": {
+            "category": "Top",
+            "display_name": "Mørkebrun Rullekravestrik",
+            "primary_color": "Brun",
+            "shade": "Mørk",
+            "secondary_color": "Ingen",
+            "pattern": "Solid",
+            "compatibility": {
+                "Bund": [
+                    "Beige",
+                    "Grå",
+                    "Navy",
+                    "Grøn",
+                    "Brun"
+                ],
+                "Sko": [
+                    "Brun",
+                    "Sort",
+                    "Grå"
+                ],
+                "Strømper": [
+                    "Brun",
+                    "Navy",
+                    "Grøn",
+                    "Beige",
+                    "Rød"
+                ],
+                "Overtøj": [
+                    "Beige",
+                    "Navy",
+                    "Grøn",
+                    "Grå"
+                ]
+            }
+        }
+    },
+    {
+        "id": 2,
+        "filename": "img_20260206_204715.webp",
+        "image_path": "img\\img_20260206_204715.webp",
+        "analysis": {
+            "category": "Top",
+            "display_name": "Beige Ternet Skjorte",
+            "primary_color": "Beige",
+            "shade": "Lys",
+            "secondary_color": "Brun",
+            "pattern": "Mønster",
+            "compatibility": {
+                "Bund": [
+                    "Brun",
+                    "Navy",
+                    "Grøn",
+                    "Grå",
+                    "Beige"
+                ],
+                "Sko": [
+                    "Brun",
+                    "Beige",
+                    "Navy"
+                ],
+                "Strømper": [
+                    "Brun",
+                    "Navy",
+                    "Grøn",
+                    "Beige"
+                ],
+                "Overtøj": [
+                    "Navy",
+                    "Brun",
+                    "Grøn",
+                    "Grå"
+                ]
+            }
+        }
+    },
+    {
+        "id": 3,
+        "filename": "img_20260206_205331.webp",
+        "image_path": "img\\img_20260206_205331.webp",
+        "analysis": {
+            "category": "Strømper",
+            "display_name": "Beige meleret strømpe",
+            "primary_color": "Beige",
+            "shade": "Lys",
+            "secondary_color": "Ingen",
+            "pattern": "Struktur",
+            "compatibility": {
+                "Top": [
+                    "Blå",
+                    "Grøn",
+                    "Hvid",
+                    "Brun",
+                    "Beige"
+                ],
+                "Bund": [
+                    "Brun",
+                    "Navy",
+                    "Grøn",
+                    "Grå",
+                    "Beige"
+                ],
+                "Sko": [
+                    "Brun",
+                    "Sort",
+                    "Rød"
+                ],
+                "Overtøj": [
+                    "Navy",
+                    "Grøn",
+                    "Brun",
+                    "Grå"
+                ]
+            }
+        }
+    },
+    {
+        "id": 4,
+        "filename": "img_20260206_205934.webp",
+        "image_path": "img\\img_20260206_205934.webp",
+        "analysis": {
+            "category": "Strømper",
+            "display_name": "Beige Melerede Strømper",
+            "primary_color": "Beige",
+            "shade": "Lys",
+            "secondary_color": "Ingen",
+            "pattern": "Struktur",
+            "compatibility": {
+                "Top": [
+                    "Beige",
+                    "Brun",
+                    "Navy",
+                    "Grøn",
+                    "Grå",
+                    "Blå",
+                    "Hvid"
+                ],
+                "Bund": [
+                    "Brun",
+                    "Navy",
+                    "Beige",
+                    "Grøn",
+                    "Grå",
+                    "Blå"
+                ],
+                "Sko": [
+                    "Brun",
+                    "Beige",
+                    "Navy",
+                    "Sort"
+                ],
+                "Overtøj": [
+                    "Brun",
+                    "Navy",
+                    "Grøn",
+                    "Beige",
+                    "Grå"
+                ]
+            }
+        }
+    },
+    {
+        "id": 5,
+        "filename": "img_20260206_210126.webp",
+        "image_path": "img\\img_20260206_210126.webp",
+        "analysis": {
+            "category": "Strømper",
+            "display_name": "Mellembrun Ribstrikket Strømpe",
+            "primary_color": "Brun",
+            "shade": "Mellem",
+            "secondary_color": "Ingen",
+            "pattern": "Struktur",
+            "compatibility": {
+                "Top": [
+                    "Navy",
+                    "Beige",
+                    "Grøn",
+                    "Brun",
+                    "Grå"
+                ],
+                "Bund": [
+                    "Beige",
+                    "Navy",
+                    "Grå",
+                    "Brun",
+                    "Grøn"
+                ],
+                "Sko": [
+                    "Brun",
+                    "Beige",
+                    "Sort"
+                ],
+                "Overtøj": [
+                    "Navy",
+                    "Brun",
+                    "Grøn",
+                    "Beige",
+                    "Grå"
+                ]
+            }
+        }
+    },
+    {
+        "id": 6,
+        "filename": "img_20260206_210452.webp",
+        "image_path": "img\\img_20260206_210452.webp",
+        "analysis": {
+            "category": "Strømper",
+            "display_name": "Mørkebrun Ribstrikket Strømpe",
+            "primary_color": "Brun",
+            "shade": "Mørk",
+            "secondary_color": "Ingen",
+            "pattern": "Struktur",
+            "compatibility": {
+                "Top": [
+                    "Beige",
+                    "Grøn",
+                    "Blå",
+                    "Navy",
+                    "Grå"
+                ],
+                "Bund": [
+                    "Beige",
+                    "Grå",
+                    "Grøn",
+                    "Navy",
+                    "Brun"
+                ],
+                "Sko": [
+                    "Brun",
+                    "Sort",
+                    "Beige"
+                ],
+                "Overtøj": [
+                    "Grøn",
+                    "Beige",
+                    "Navy",
+                    "Brun"
+                ]
+            }
+        }
+    },
+    {
+        "id": 7,
+        "filename": "img_20260206_210606.webp",
+        "image_path": "img\\img_20260206_210606.webp",
+        "analysis": {
+            "category": "Strømper",
+            "display_name": "Sorte klassiske strømper",
+            "primary_color": "Sort",
+            "shade": "Mørk",
+            "secondary_color": "Ingen",
+            "pattern": "Solid",
+            "compatibility": {
+                "Top": [
+                    "Grå",
+                    "Navy",
+                    "Sort",
+                    "Hvid",
+                    "Blå",
+                    "Grøn"
+                ],
+                "Bund": [
+                    "Sort",
+                    "Grå",
+                    "Navy",
+                    "Brun"
+                ],
+                "Sko": [
+                    "Sort",
+                    "Grå",
+                    "Navy"
+                ],
+                "Overtøj": [
+                    "Sort",
+                    "Navy",
+                    "Grå",
+                    "Brun"
+                ]
+            }
+        }
+    },
+    {
+        "id": 8,
+        "filename": "img_20260206_212036.webp",
+        "image_path": "img\\img_20260206_212036.webp",
+        "analysis": {
+            "category": "Bund",
+            "display_name": "Sorte Denim Jeans",
+            "primary_color": "Sort",
+            "shade": "Mørk",
+            "secondary_color": "Ingen",
+            "pattern": "Solid",
+            "compatibility": {
+                "Top": [
+                    "Grå",
+                    "Hvid",
+                    "Beige",
+                    "Grøn",
+                    "Brun",
+                    "Navy",
+                    "Rød"
+                ],
+                "Sko": [
+                    "Sort",
+                    "Brun",
+                    "Grå"
+                ],
+                "Strømper": [
+                    "Sort",
+                    "Grå",
+                    "Rød",
+                    "Navy"
+                ],
+                "Overtøj": [
+                    "Grå",
+                    "Grøn",
+                    "Brun",
+                    "Navy",
+                    "Sort"
+                ]
+            }
+        }
+    },
+    {
+        "id": 9,
+        "filename": "img_20260206_212159.webp",
+        "image_path": "img\\img_20260206_212159.webp",
+        "analysis": {
+            "category": "Sko",
+            "display_name": "Mørkebrune Læder Loafers",
+            "primary_color": "Brun",
+            "shade": "Mørk",
+            "secondary_color": "Ingen",
+            "pattern": "Solid",
+            "compatibility": {
+                "Top": [
+                    "Blå",
+                    "Beige",
+                    "Navy",
+                    "Grøn",
+                    "Hvid",
+                    "Rød",
+                    "Grå"
+                ],
+                "Bund": [
+                    "Beige",
+                    "Navy",
+                    "Grå",
+                    "Grøn",
+                    "Brun",
+                    "Blå"
+                ],
+                "Strømper": [
+                    "Brun",
+                    "Navy",
+                    "Rød",
+                    "Grå",
+                    "Grøn",
+                    "Beige"
+                ],
+                "Overtøj": [
+                    "Navy",
+                    "Brun",
+                    "Grøn",
+                    "Beige",
+                    "Grå"
+                ]
+            }
+        }
+    },
+    {
+        "id": 10,
+        "filename": "img_20260206_214319.webp",
+        "image_path": "img\\img_20260206_214319.webp",
+        "analysis": {
+            "category": "Strømper",
+            "display_name": "Mørkerøde Strukturede Strømper",
+            "primary_color": "Rød",
+            "shade": "Mørk",
+            "secondary_color": "Ingen",
+            "pattern": "Struktur",
+            "compatibility": {
+                "Top": [
+                    "Navy",
+                    "Grå",
+                    "Brun",
+                    "Beige",
+                    "Grøn",
+                    "Rød"
+                ],
+                "Bund": [
+                    "Navy",
+                    "Grå",
+                    "Brun",
+                    "Beige",
+                    "Grøn"
+                ],
+                "Sko": [
+                    "Brun",
+                    "Sort",
+                    "Beige"
+                ],
+                "Overtøj": [
+                    "Navy",
+                    "Brun",
+                    "Grøn",
+                    "Grå"
+                ]
+            }
+        }
+    },
+    {
+        "id": 11,
+        "filename": "img_20260206_214447.webp",
+        "image_path": "img\\img_20260206_214447.webp",
+        "analysis": {
+            "category": "Strømper",
+            "display_name": "Grønne Teksturerede Strømper",
+            "primary_color": "Grøn",
+            "shade": "Mellem",
+            "secondary_color": "Ingen",
+            "pattern": "Struktur",
+            "compatibility": {
+                "Top": [
+                    "Navy",
+                    "Brun",
+                    "Beige",
+                    "Grå",
+                    "Hvid",
+                    "Rød"
+                ],
+                "Bund": [
+                    "Brun",
+                    "Beige",
+                    "Navy",
+                    "Grå",
+                    "Grøn"
+                ],
+                "Sko": [
+                    "Brun",
+                    "Sort",
+                    "Navy"
+                ],
+                "Overtøj": [
+                    "Navy",
+                    "Brun",
+                    "Grå",
+                    "Beige",
+                    "Grøn"
+                ]
+            }
+        }
+    },
+    {
+        "id": 12,
+        "filename": "img_20260206_220315.webp",
+        "image_path": "img\\img_20260206_220315.webp",
+        "analysis": {
+            "category": "Bund",
+            "display_name": "Sandfarvede Struktur Bukser",
+            "primary_color": "Beige",
+            "shade": "Mellem",
+            "secondary_color": "Ingen",
+            "pattern": "Struktur",
+            "compatibility": {
+                "Top": [
+                    "Navy",
+                    "Blå",
+                    "Brun",
+                    "Grøn",
+                    "Hvid",
+                    "Grå",
+                    "Rød"
+                ],
+                "Sko": [
+                    "Brun",
+                    "Sort",
+                    "Navy"
+                ],
+                "Strømper": [
+                    "Navy",
+                    "Brun",
+                    "Grøn",
+                    "Rød",
+                    "Grå"
+                ],
+                "Overtøj": [
+                    "Navy",
+                    "Brun",
+                    "Grøn",
+                    "Grå",
+                    "Blå"
+                ]
+            }
+        }
+    },
+    {
+        "id": 13,
+        "filename": "img_20260206_223221.jpg",
+        "image_path": "img\\img_20260206_223221.jpg",
+        "analysis": {
+            "category": "Sko",
+            "display_name": "Mørkebrune Læder Sejlersko",
+            "primary_color": "Brun",
+            "shade": "Mørk",
+            "secondary_color": "Ingen",
+            "pattern": "Struktur",
+            "compatibility": {
+                "Top": [
+                    "Navy",
+                    "Beige",
+                    "Grå",
+                    "Hvid",
+                    "Grøn",
+                    "Rød",
+                    "Brun"
+                ],
+                "Bund": [
+                    "Beige",
+                    "Navy",
+                    "Grå",
+                    "Grøn",
+                    "Hvid",
+                    "Brun"
+                ],
+                "Strømper": [
+                    "Navy",
+                    "Grå",
+                    "Grøn",
+                    "Beige",
+                    "Rød",
+                    "Brun"
+                ],
+                "Overtøj": [
+                    "Navy",
+                    "Grøn",
+                    "Beige",
+                    "Grå",
+                    "Brun"
+                ]
+            }
+        }
+    }
+]
