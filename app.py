@@ -26,7 +26,16 @@ def load_wardrobe():
     if not os.path.exists(DATABASE_FILE):
         return []
     with open(DATABASE_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
+        data = json.load(f)
+        
+        # --- FIX: Windows vs Linux Stier ---
+        # Retter baglæns skråstreger (\) til almindelige skråstreger (/)
+        # så billederne kan findes på mobilen/skyen.
+        for item in data:
+            if 'image_path' in item:
+                item['image_path'] = item['image_path'].replace('\\', '/')
+        
+        return data
 
 def get_items_by_category(items, category):
     return [i for i in items if i['analysis']['category'] == category]
