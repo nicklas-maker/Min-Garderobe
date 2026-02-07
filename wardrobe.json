@@ -545,5 +545,91 @@
                 ]
             }
         }
+    },
+    {
+        "id": 14,
+        "filename": "img_20260207_092531.png",
+        "image_path": "img\\img_20260207_092531.png",
+        "analysis": {
+            "category": "Bund",
+            "display_name": "Mørkebrune Chinos",
+            "primary_color": "Brun",
+            "shade": "Mørk",
+            "secondary_color": "Ingen",
+            "pattern": "Solid",
+            "compatibility": {
+                "Top": [
+                    "Navy",
+                    "Beige",
+                    "Grå",
+                    "Hvid",
+                    "Grøn",
+                    "Blå",
+                    "Rød"
+                ],
+                "Sko": [
+                    "Sort",
+                    "Hvid",
+                    "Brun",
+                    "Rød"
+                ],
+                "Strømper": [
+                    "Brun",
+                    "Navy",
+                    "Grå",
+                    "Grøn"
+                ],
+                "Overtøj": [
+                    "Navy",
+                    "Beige",
+                    "Grøn",
+                    "Grå",
+                    "Sort"
+                ]
+            }
+        }
+    },
+    {
+        "id": 15,
+        "filename": "img_20260207_093447.jpg",
+        "image_path": "img\\img_20260207_093447.jpg",
+        "analysis": {
+            "category": "Top",
+            "display_name": "Mørk Olivengrøn Rullekrave",
+            "primary_color": "Grøn",
+            "shade": "Mørk",
+            "secondary_color": "Ingen",
+            "pattern": "Solid",
+            "compatibility": {
+                "Bund": [
+                    "Beige",
+                    "Brun",
+                    "Grå",
+                    "Navy",
+                    "Blå",
+                    "Hvid"
+                ],
+                "Sko": [
+                    "Brun",
+                    "Sort",
+                    "Beige",
+                    "Hvid"
+                ],
+                "Strømper": [
+                    "Brun",
+                    "Grå",
+                    "Navy",
+                    "Grøn",
+                    "Rød"
+                ],
+                "Overtøj": [
+                    "Navy",
+                    "Beige",
+                    "Brun",
+                    "Grå",
+                    "Sort"
+                ]
+            }
+        }
     }
 ]
