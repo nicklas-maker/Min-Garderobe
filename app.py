@@ -224,19 +224,26 @@ else:
                         if st.session_state.outfit:
                             is_dead_end = check_dead_end(item, current_selection_list, wardrobe)
                         
-                        # Tilføj ikon til knappen baseret på prioritet
+                        # Byg ikon-prefix
+                        icon_prefix = ""
+                        
+                        # 1. Blindgyde advarsel
                         if is_dead_end:
-                            label_text = "⚠️ " + label_text
-                        elif st.session_state.outfit: # Kun vis match-ikoner hvis vi har valgt noget at matche imod
+                            icon_prefix += "⚠️ "
+                            
+                        # 2. Score ikon (hvis vi har valgt noget at matche imod)
+                        if st.session_state.outfit:
                             if score == 0:
-                                label_text = "⭐ " + label_text
+                                icon_prefix += "⭐ "
                             elif score == 1:
-                                label_text = "1️⃣ " + label_text
+                                icon_prefix += "1️⃣ "
                             elif 2 <= score <= 3:
-                                label_text = "2️⃣ " + label_text
+                                icon_prefix += "2️⃣ "
                             elif 4 <= score <= 5:
-                                label_text = "3️⃣ " + label_text
-                            # 6+ får intet ikon
+                                icon_prefix += "3️⃣ "
+                        
+                        # Sæt det hele sammen
+                        label_text = icon_prefix + label_text
                         
                         if st.button(label_text, key=f"add_{item['id']}"):
                             if is_dead_end:
