@@ -85,7 +85,6 @@ def check_dead_end(candidate, current_outfit, wardrobe):
     temp_outfit = current_outfit + [candidate]
     
     # 2. Find ud af hvilke kategorier vi stadig mangler
-    # (Vi kigger på alle mulige kategorier, og trækker dem fra vi har i temp_outfit)
     filled_cats = {item['analysis']['category'] for item in temp_outfit}
     missing_cats = [c for c in CATEGORIES if c not in filled_cats]
     
@@ -93,21 +92,17 @@ def check_dead_end(candidate, current_outfit, wardrobe):
     for missing_cat in missing_cats:
         potential_items = get_items_by_category(wardrobe, missing_cat)
         
-        # Hvis vi slet ikke ejer noget i den kategori, er det ikke en farve-blindgyde, bare mangel på tøj.
         if not potential_items:
             continue
             
-        # Tjek om MINDST ÉN af de potentielle ting kan passe til det hypotetiske outfit
         found_match = False
         for potential_item in potential_items:
             is_valid, _ = check_compatibility(potential_item, temp_outfit)
             if is_valid:
                 found_match = True
-                break # Vi fandt en vej videre! Gå til næste kategori.
+                break 
         
         if not found_match:
-            # Vi fandt INGEN ting i 'missing_cat' der passer til temp_outfit.
-            # Dette er en blindgyde!
             return True
             
     return False
@@ -120,6 +115,25 @@ st.markdown("""
     .stButton>button { width: 100%; border-radius: 12px; height: auto; min-height: 3em; }
     img { border-radius: 10px; }
     div[data-testid="stExpander"] { border: none; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
+    .data-badge { 
+        font-size: 0.8em; 
+        color: #666; 
+        background-color: #f0f2f6; 
+        padding: 2px 6px; 
+        border-radius: 4px; 
+        margin-top: 4px;
+        display: inline-block;
+    }
+    
+    /* MOBIL TILPASNING: Gør billeder 25% mindre på små skærme */
+    @media (max-width: 768px) {
+        div[data-testid="stImage"] img {
+            width: 75% !important;
+            margin-left: auto;
+            margin-right: auto;
+            display: block;
+        }
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -140,7 +154,7 @@ if st.sidebar.button("🗑️ Nulstil Outfit"):
     st.session_state.outfit = {}
     st.rerun()
 
-# --- VISNING AF OUTFIT GRID (Opdateret: Kun valgte items) ---
+# --- VISNING AF OUTFIT GRID ---
 selected_cats = [cat for cat in CATEGORIES if cat in st.session_state.outfit]
 
 if selected_cats:
@@ -151,7 +165,7 @@ if selected_cats:
         data = item['analysis']
         
         with cols[i]:
-            st.image(item['image_path'], width=300)
+            st.image(item['image_path'], width=175)
             shade_info = f"({data.get('shade', 'Mellem')} {data.get('primary_color', '')})"
             st.caption(f"✅ {data['display_name']} {shade_info}")
             
@@ -205,18 +219,24 @@ else:
                         
                         label_text = f"{name}\n{shade_str}"
                         
-                        # --- TJEK BLINDGYDE (FREMTIDS-RADAR) ---
+                        # --- IKON & ADVARSELS LOGIK ---
                         is_dead_end = False
-                        # Vi tjekker kun for blindgyder hvis vi allerede har valgt noget,
-                        # ellers er verden åben.
                         if st.session_state.outfit:
                             is_dead_end = check_dead_end(item, current_selection_list, wardrobe)
                         
-                        # Tilføj ikon til knappen
+                        # Tilføj ikon til knappen baseret på prioritet
                         if is_dead_end:
                             label_text = "⚠️ " + label_text
-                        elif score < 2 and st.session_state.outfit:
-                            label_text = "⭐ " + label_text
+                        elif st.session_state.outfit: # Kun vis match-ikoner hvis vi har valgt noget at matche imod
+                            if score == 0:
+                                label_text = "⭐ " + label_text
+                            elif score == 1:
+                                label_text = "1️⃣ " + label_text
+                            elif 2 <= score <= 3:
+                                label_text = "2️⃣ " + label_text
+                            elif 4 <= score <= 5:
+                                label_text = "3️⃣ " + label_text
+                            # 6+ får intet ikon
                         
                         if st.button(label_text, key=f"add_{item['id']}"):
                             if is_dead_end:
