@@ -49,16 +49,25 @@ def get_coordinates(city_name):
 def get_weather_forecast(lat, lon):
     """Henter dagens vejrprofil (Morgen, Max, Regn, Vind)."""
     try:
-        # Vi henter 'forecast' for at få dagens spænd
-        url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max&hourly=temperature_2m,apparent_temperature&forecast_days=1&timezone=Europe%2FBerlin"
-        data = requests.get(url).json()
+        # Vi henter 'forecast' for at få dagens spænd. Bruger timezone=auto for at undgå fejl.
+        url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max&hourly=temperature_2m,apparent_temperature&forecast_days=1&timezone=auto"
+        response = requests.get(url)
+        response.raise_for_status() # Tjekker om forbindelsen lykkedes
+        data = response.json()
         
+        # Ekstra tjek: Fik vi de forventede data?
+        if 'daily' not in data:
+            st.warning(f"Vejrtjeneste svar: {data}") # Vis hvad vi fik i stedet
+            return None
+
         daily = data['daily']
         hourly = data['hourly']
         
         # Find temperatur kl 08:00 (index 8)
+        # Vi bruger min(..., 23) for at sikre at vi ikke crasher sent på dagen hvis index løber tør
         temp_morning = hourly['temperature_2m'][8]
-        feels_like_now = hourly['apparent_temperature'][datetime.now().hour]
+        current_hour = min(datetime.now().hour, 23)
+        feels_like_now = hourly['apparent_temperature'][current_hour]
         
         return {
             "temp_max": daily['temperature_2m_max'][0],
@@ -69,7 +78,8 @@ def get_weather_forecast(lat, lon):
             "wind_kph": daily['wind_speed_10m_max'][0]
         }
     except Exception as e:
-        st.error(f"Kunne ikke hente vejr: {e}")
+        # Vis fejlen diskret så resten af appen stadig virker
+        print(f"Vejrfejl: {e}") 
         return None
 
 # --- HISTORIK FUNKTIONER ---
