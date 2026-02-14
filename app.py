@@ -29,8 +29,6 @@ def load_wardrobe():
         data = json.load(f)
         
         # --- FIX: Windows vs Linux Stier ---
-        # Retter baglæns skråstreger (\) til almindelige skråstreger (/)
-        # så billederne kan findes på mobilen/skyen.
         for item in data:
             if 'image_path' in item:
                 item['image_path'] = item['image_path'].replace('\\', '/')
@@ -76,6 +74,44 @@ def check_compatibility(candidate, current_outfit):
     
     return is_valid, total_score
 
+def check_dead_end(candidate, current_outfit, wardrobe):
+    """
+    FREMTIDS-RADAR:
+    Simulerer at vi vælger 'candidate', og tjekker om vi maler os selv op i et hjørne
+    for de resterende kategorier.
+    Returnerer True hvis det er en blindgyde.
+    """
+    # 1. Lav et hypotetisk outfit
+    temp_outfit = current_outfit + [candidate]
+    
+    # 2. Find ud af hvilke kategorier vi stadig mangler
+    # (Vi kigger på alle mulige kategorier, og trækker dem fra vi har i temp_outfit)
+    filled_cats = {item['analysis']['category'] for item in temp_outfit}
+    missing_cats = [c for c in CATEGORIES if c not in filled_cats]
+    
+    # 3. Scan fremtiden
+    for missing_cat in missing_cats:
+        potential_items = get_items_by_category(wardrobe, missing_cat)
+        
+        # Hvis vi slet ikke ejer noget i den kategori, er det ikke en farve-blindgyde, bare mangel på tøj.
+        if not potential_items:
+            continue
+            
+        # Tjek om MINDST ÉN af de potentielle ting kan passe til det hypotetiske outfit
+        found_match = False
+        for potential_item in potential_items:
+            is_valid, _ = check_compatibility(potential_item, temp_outfit)
+            if is_valid:
+                found_match = True
+                break # Vi fandt en vej videre! Gå til næste kategori.
+        
+        if not found_match:
+            # Vi fandt INGEN ting i 'missing_cat' der passer til temp_outfit.
+            # Dette er en blindgyde!
+            return True
+            
+    return False
+
 # --- UI SETUP ---
 st.set_page_config(page_title="Garderoben", page_icon="👔", layout="wide")
 
@@ -105,11 +141,9 @@ if st.sidebar.button("🗑️ Nulstil Outfit"):
     st.rerun()
 
 # --- VISNING AF OUTFIT GRID (Opdateret: Kun valgte items) ---
-# Find de kategorier, der faktisk er valgt (i den rigtige rækkefølge)
 selected_cats = [cat for cat in CATEGORIES if cat in st.session_state.outfit]
 
 if selected_cats:
-    # Lav kun kolonner til det antal ting vi har valgt
     cols = st.columns(len(selected_cats))
     
     for i, cat in enumerate(selected_cats):
@@ -117,10 +151,7 @@ if selected_cats:
         data = item['analysis']
         
         with cols[i]:
-            # Sætter en fast bredde (150px) for at gøre billederne mindre og mere kompakte
             st.image(item['image_path'], width=300)
-            
-            # Kombinerer nu navn og farve-info på én linje
             shade_info = f"({data.get('shade', 'Mellem')} {data.get('primary_color', '')})"
             st.caption(f"✅ {data['display_name']} {shade_info}")
             
@@ -128,7 +159,6 @@ if selected_cats:
                 del st.session_state.outfit[cat]
                 st.rerun()
 else:
-    # Hvis intet er valgt endnu, vis en venlig start-besked
     st.info("Start med at vælge en del af dit outfit nedenfor 👇")
 
 st.divider()
@@ -171,14 +201,26 @@ else:
                         st.image(item['image_path'], use_container_width=True)
                         data = item['analysis']
                         name = data['display_name']
-                        
                         shade_str = f"({data.get('shade', 'Mellem')} {data.get('primary_color', '')})"
                         
                         label_text = f"{name}\n{shade_str}"
-                        if score < 2 and st.session_state.outfit:
+                        
+                        # --- TJEK BLINDGYDE (FREMTIDS-RADAR) ---
+                        is_dead_end = False
+                        # Vi tjekker kun for blindgyder hvis vi allerede har valgt noget,
+                        # ellers er verden åben.
+                        if st.session_state.outfit:
+                            is_dead_end = check_dead_end(item, current_selection_list, wardrobe)
+                        
+                        # Tilføj ikon til knappen
+                        if is_dead_end:
+                            label_text = "⚠️ " + label_text
+                        elif score < 2 and st.session_state.outfit:
                             label_text = "⭐ " + label_text
                         
                         if st.button(label_text, key=f"add_{item['id']}"):
+                            if is_dead_end:
+                                st.toast(f"Advarsel: Hvis du vælger {name}, har du ingen passende ting i de resterende kategorier!", icon="⚠️")
                             st.session_state.outfit[cat] = item
                             st.rerun()
             
