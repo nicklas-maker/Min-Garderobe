@@ -93,16 +93,6 @@ st.markdown("""
         margin-top: 4px;
         display: inline-block;
     }
-    
-    /* MOBIL TILPASNING: Gør billeder 25% mindre på små skærme */
-    @media (max-width: 768px) {
-        div[data-testid="stImage"] img {
-            width: 75% !important;
-            margin-left: auto;
-            margin-right: auto;
-            display: block;
-        }
-    }
 </style>
 """, unsafe_allow_html=True)
 
