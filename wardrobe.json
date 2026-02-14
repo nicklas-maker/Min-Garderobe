@@ -631,5 +631,49 @@
                 ]
             }
         }
+    },
+    {
+        "id": 16,
+        "filename": "img_20260214_144341.webp",
+        "image_path": "img\\img_20260214_144341.webp",
+        "analysis": {
+            "category": "Top",
+            "display_name": "Mørkebrun T-shirt",
+            "primary_color": "Brun",
+            "shade": "Mørk",
+            "secondary_color": "Ingen",
+            "pattern": "Solid",
+            "compatibility": {
+                "Bund": [
+                    "Beige",
+                    "Grå",
+                    "Blå",
+                    "Grøn",
+                    "Hvid",
+                    "Navy"
+                ],
+                "Sko": [
+                    "Brun",
+                    "Hvid",
+                    "Beige",
+                    "Sort"
+                ],
+                "Strømper": [
+                    "Grå",
+                    "Navy",
+                    "Brun",
+                    "Beige",
+                    "Grøn",
+                    "Rød"
+                ],
+                "Overtøj": [
+                    "Navy",
+                    "Beige",
+                    "Grøn",
+                    "Grå",
+                    "Brun"
+                ]
+            }
+        }
     }
 ]
