@@ -675,5 +675,49 @@
                 ]
             }
         }
+    },
+    {
+        "id": 17,
+        "filename": "img_20260214_165922.jpg",
+        "image_path": "img\\img_20260214_165922.jpg",
+        "analysis": {
+            "category": "Overtøj",
+            "display_name": "Navy Fløjlsoverskjorte",
+            "primary_color": "Navy",
+            "shade": "Mørk",
+            "secondary_color": "Ingen",
+            "pattern": "Struktur",
+            "compatibility": {
+                "Top": [
+                    "Hvid",
+                    "Grå",
+                    "Beige",
+                    "Rød",
+                    "Grøn",
+                    "Blå"
+                ],
+                "Bund": [
+                    "Beige",
+                    "Grå",
+                    "Brun",
+                    "Grøn",
+                    "Hvid",
+                    "Blå"
+                ],
+                "Sko": [
+                    "Brun",
+                    "Hvid",
+                    "Sort",
+                    "Beige"
+                ],
+                "Strømper": [
+                    "Navy",
+                    "Grå",
+                    "Brun",
+                    "Grøn",
+                    "Rød"
+                ]
+            }
+        }
     }
 ]
