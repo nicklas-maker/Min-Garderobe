@@ -33,6 +33,7 @@ db = firestore.client()
 
 # --- VEJR FUNKTIONER ---
 
+@st.cache_data # <--- CACHE: Husker koordinater for evigt (de ændrer sig ikke)
 def get_coordinates(city_name):
     """Finder breddegrad/længdegrad for en by via OpenMeteo Geocoding."""
     try:
@@ -41,9 +42,11 @@ def get_coordinates(city_name):
         if "results" in response:
             return response["results"][0]["latitude"], response["results"][0]["longitude"]
     except Exception as e:
-        st.sidebar.error(f"Kunne ikke finde koordinater: {e}")
+        # Vi bruger print i stedet for st.sidebar.error inde i en cached funktion for at undgå UI-problemer
+        print(f"Kunne ikke finde koordinater: {e}")
     return None, None
 
+@st.cache_data(ttl=3600) # <--- CACHE: Husker vejret i 1 time (3600 sekunder)
 def get_weather_forecast(lat, lon):
     """Henter dagens vejrprofil (Morgen, Max, Regn, Vind)."""
     try:
@@ -55,7 +58,7 @@ def get_weather_forecast(lat, lon):
         
         # Ekstra tjek: Fik vi de forventede data?
         if 'daily' not in data:
-            st.sidebar.error(f"Vejrdata mangler 'daily'. API Svar: {data}")
+            print(f"Vejrdata mangler 'daily'. API Svar: {data}")
             return None
 
         daily = data['daily']
@@ -84,8 +87,7 @@ def get_weather_forecast(lat, lon):
             "wind_kph": daily['wind_speed_10m_max'][0]
         }
     except Exception as e:
-        # Vis fejlen direkte i sidebaren så vi kan se den på mobilen
-        st.sidebar.error(f"Vejrfejl: {e}") 
+        print(f"Vejrfejl: {e}") 
         return None
 
 # --- HISTORIK FUNKTIONER ---
