@@ -33,7 +33,7 @@ db = firestore.client()
 
 # --- VEJR FUNKTIONER ---
 
-@st.cache_data # <--- CACHE: Husker koordinater for evigt (de ændrer sig ikke)
+@st.cache_data # <--- CACHE: Husker koordinater for evigt
 def get_coordinates(city_name):
     """Finder breddegrad/længdegrad for en by via OpenMeteo Geocoding."""
     try:
@@ -42,38 +42,46 @@ def get_coordinates(city_name):
         if "results" in response:
             return response["results"][0]["latitude"], response["results"][0]["longitude"]
     except Exception as e:
-        st.sidebar.error(f"Koordinat-fejl: {e}")
+        print(f"Koordinat-fejl: {e}")
     return None, None
 
-@st.cache_data(ttl=3600) # <--- CACHE: Husker vejret i 1 time (3600 sekunder)
+@st.cache_data(ttl=3600) # <--- CACHE: Husker rådata i 1 time
+def fetch_weather_api_data(lat, lon):
+    """
+    Intern funktion der henter data fra API. 
+    Vi adskiller denne for at sikre, at vi kun cacher SUCCES.
+    Hvis denne fejler (fx 429), cacher Streamlit IKKE resultatet, 
+    så vi kan prøve igen senere.
+    """
+    url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max&hourly=temperature_2m,apparent_temperature&forecast_days=1&timezone=auto"
+    response = requests.get(url)
+    response.raise_for_status() # Kaster fejl hvis status ikke er 200 OK
+    return response.json()
+
 def get_weather_forecast(lat, lon):
-    """Henter dagens vejrprofil (Morgen, Max, Regn, Vind)."""
+    """Behandler vejrdata og håndterer fejl uden at crashe appen."""
     try:
-        # Vi henter 'forecast' for at få dagens spænd. Bruger timezone=auto for at undgå fejl.
-        url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max&hourly=temperature_2m,apparent_temperature&forecast_days=1&timezone=auto"
-        response = requests.get(url)
-        response.raise_for_status() # Tjekker om forbindelsen lykkedes
-        data = response.json()
+        # Hent data (cached hvis muligt)
+        data = fetch_weather_api_data(lat, lon)
         
-        # Ekstra tjek: Fik vi de forventede data?
+        # Ekstra tjek
         if 'daily' not in data:
-            st.error(f"Vejrdata mangler 'daily'. API Svar: {data}")
             return None
 
         daily = data['daily']
         hourly = data['hourly']
         
-        # Find temperatur kl 08:00 (index 8)
+        # Databehandling
         if len(hourly['temperature_2m']) > 8:
             temp_morning = hourly['temperature_2m'][8]
         else:
-            temp_morning = daily['temperature_2m_max'][0] # Fallback
+            temp_morning = daily['temperature_2m_max'][0]
 
         current_hour = min(datetime.now().hour, 23)
         if len(hourly['apparent_temperature']) > current_hour:
             feels_like_now = hourly['apparent_temperature'][current_hour]
         else:
-            feels_like_now = daily['temperature_2m_max'][0] # Fallback
+            feels_like_now = daily['temperature_2m_max'][0]
 
         return {
             "temp_max": daily['temperature_2m_max'][0],
@@ -84,7 +92,8 @@ def get_weather_forecast(lat, lon):
             "wind_kph": daily['wind_speed_10m_max'][0]
         }
     except Exception as e:
-        st.error(f"Vejrfejl: {e}") 
+        # Vi printer fejlen til loggen, men crasher ikke UI'et
+        print(f"Vejrfejl (ignoreret i UI): {e}") 
         return None
 
 # --- HISTORIK FUNKTIONER ---
@@ -298,8 +307,9 @@ with st.sidebar:
             weather_data = new_weather_data
             st.session_state.weather = weather_data # Gem til næste gang
         elif 'weather' in st.session_state:
+            # FALLBACK: Hvis API fejler (429), brug det gamle vejr
             weather_data = st.session_state.weather
-            st.warning("Bruger gemt vejr (kunne ikke opdatere).")
+            st.warning("Kunne ikke opdatere vejr (bruger gemt data).")
         
         if weather_data:
             st.markdown(f"""
@@ -371,7 +381,6 @@ if st.session_state.outfit:
                 save_outfit_to_history(list(st.session_state.outfit.values()), weather_data, city)
             st.toast("Outfit gemt! Jeg lærer af din stil.", icon="🧠")
         else:
-            # Nu burde denne fejl ikke komme, hvis vi har data, men vi viser en bedre besked
             st.error("Kan ikke gemme uden vejrdata. Prøv at indtaste din by igen i sidebaren.")
 
 if missing_cats:
