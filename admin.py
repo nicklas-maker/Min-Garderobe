@@ -26,14 +26,13 @@ db = firestore.client()
 # --- AI PROMPT ---
 AI_PROMPT = """ANALYSE INSTRUKTION:
 
-[VALGFRIT: Skriv evt. "Dette er overtøj" eller "Dette er en top" her for at hjælpe mig, hvis det er tvetydigt]
+
 
 Du skal analysere det vedhæftede billede af et stykke herretøj.
 Din opgave er at returnere struktureret JSON data. Du må IKKE opfinde dine egne værdier til de faste felter - du SKAL vælge fra listerne herunder.
 
 1. IDENTIFIKATION:
 - Hovedkategori: [Top, Bund, Sko, Strømper, Overtøj]
-  * VIGTIGT: Hvis genstanden er en 'Overshirt', 'Cardigan', 'Zip-up' eller en kraftig skjorte beregnet til at have åben over en t-shirt (lag-på-lag), SKAL den kategoriseres som 'Overtøj', ikke 'Top'.
 - Type: Vælg den mest præcise fra listen: [T-shirt, Polo, Skjorte, Strik, Sweatshirt, Vest, Jeans, Chinos, Habitbukser, Sweatpants, Shorts, Sneakers, Støvler, Pæne Sko, Loafers, Jakke, Frakke, Blazer, Cardigan, Overshirt, Dress, Sport, Uld].
 - Display Navn: Generer et kort, beskrivende navn på dansk på max 4 ord (F.eks. "Olivengrøn Strik", "Mørkeblå Chinos").
 - Primær Farve: Vælg den tætteste fra [Sort, Hvid, Grå, Navy, Blå, Beige, Brun, Grøn, Rød, Accent]
@@ -44,8 +43,8 @@ Din opgave er at returnere struktureret JSON data. Du må IKKE opfinde dine egne
 - Sæson: Vurder tøjets tykkelse/varme: [Sommer, Vinter, Helårs, Overgang]
 
 2. MATCHING REGLER (Kompatibilitet):
-Baseret på din viden om "Heritage / Classic Menswear", lav lister over hvilke farver der passer til dette item.
-- VIGTIGT: Sorter listerne! De absolut bedste/sikreste matches skal stå FØRST. 
+Baseret på din viden om 'Heritage / Classic Menswear', lav lister over hvilke farver der passer til dette item. Inkludér både de sikre neutrale valg og karakteristiske accentfarver som Rød, så længe de overholder den tidløse æstetik.
+- VIGTIGT: Sorter listerne! De absolut bedste/sikreste matches skal stå FØRST. Men inkludér både klassiske neutrale farver og dybe accentfarver (som f.eks. Rød/Bordeaux), der komplementerer stilen. 
 - Tone-i-Tone: Husk også at inkludere 'tone-i-tone' matches, men sørg for at anbefale kontrast i intensitet (f.eks. Mørk Top til Lyse Bukser).
 - Brug KUN farvenavnene fra listen ovenfor.
 
