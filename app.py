@@ -42,8 +42,7 @@ def get_coordinates(city_name):
         if "results" in response:
             return response["results"][0]["latitude"], response["results"][0]["longitude"]
     except Exception as e:
-        # Vi bruger print i stedet for st.sidebar.error inde i en cached funktion for at undgå UI-problemer
-        print(f"Kunne ikke finde koordinater: {e}")
+        st.sidebar.error(f"Koordinat-fejl: {e}")
     return None, None
 
 @st.cache_data(ttl=3600) # <--- CACHE: Husker vejret i 1 time (3600 sekunder)
@@ -58,15 +57,13 @@ def get_weather_forecast(lat, lon):
         
         # Ekstra tjek: Fik vi de forventede data?
         if 'daily' not in data:
-            print(f"Vejrdata mangler 'daily'. API Svar: {data}")
+            st.error(f"Vejrdata mangler 'daily'. API Svar: {data}")
             return None
 
         daily = data['daily']
         hourly = data['hourly']
         
         # Find temperatur kl 08:00 (index 8)
-        # Vi bruger min(..., 23) for at sikre at vi ikke crasher sent på dagen hvis index løber tør
-        # Vi tjekker også om listen overhovedet er lang nok
         if len(hourly['temperature_2m']) > 8:
             temp_morning = hourly['temperature_2m'][8]
         else:
@@ -87,7 +84,7 @@ def get_weather_forecast(lat, lon):
             "wind_kph": daily['wind_speed_10m_max'][0]
         }
     except Exception as e:
-        print(f"Vejrfejl: {e}") 
+        st.error(f"Vejrfejl: {e}") 
         return None
 
 # --- HISTORIK FUNKTIONER ---
@@ -293,7 +290,17 @@ with st.sidebar:
     lat, lon = get_coordinates(city)
     
     if lat and lon:
-        weather_data = get_weather_forecast(lat, lon)
+        # Prøv at hente nyt vejr
+        new_weather_data = get_weather_forecast(lat, lon)
+        
+        # Hvis vi fik data, brug det. Hvis ikke, se om vi har gammelt data vi kan bruge.
+        if new_weather_data:
+            weather_data = new_weather_data
+            st.session_state.weather = weather_data # Gem til næste gang
+        elif 'weather' in st.session_state:
+            weather_data = st.session_state.weather
+            st.warning("Bruger gemt vejr (kunne ikke opdatere).")
+        
         if weather_data:
             st.markdown(f"""
             <div class="weather-box">
@@ -303,9 +310,6 @@ with st.sidebar:
                 💨 {weather_data['wind_kph']} km/t vind
             </div>
             """, unsafe_allow_html=True)
-            
-            # Gem vejr i session state så vi ikke henter det hele tiden
-            st.session_state.weather = weather_data
     else:
         st.warning("Kunne ikke finde byen.")
 
@@ -367,7 +371,8 @@ if st.session_state.outfit:
                 save_outfit_to_history(list(st.session_state.outfit.values()), weather_data, city)
             st.toast("Outfit gemt! Jeg lærer af din stil.", icon="🧠")
         else:
-            st.error("Kan ikke gemme uden vejrdata. Tjek din by.")
+            # Nu burde denne fejl ikke komme, hvis vi har data, men vi viser en bedre besked
+            st.error("Kan ikke gemme uden vejrdata. Prøv at indtaste din by igen i sidebaren.")
 
 if missing_cats:
     st.subheader("Vælg næste del:")
