@@ -96,7 +96,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.title("👔 Dagens Outfit")
+st.title("Dagens Outfit")
 
 # Hent garderobe
 wardrobe = load_wardrobe()
