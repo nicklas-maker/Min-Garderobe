@@ -84,15 +84,6 @@ st.markdown("""
     .stButton>button { width: 100%; border-radius: 12px; height: auto; min-height: 3em; }
     img { border-radius: 10px; }
     div[data-testid="stExpander"] { border: none; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
-    .data-badge { 
-        font-size: 0.8em; 
-        color: #666; 
-        background-color: #f0f2f6; 
-        padding: 2px 6px; 
-        border-radius: 4px; 
-        margin-top: 4px;
-        display: inline-block;
-    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -126,12 +117,12 @@ if selected_cats:
         data = item['analysis']
         
         with cols[i]:
-            st.image(item['image_path'], use_container_width=True)
-            st.caption(f"✅ {data['display_name']}")
+            # Sætter en fast bredde (150px) for at gøre billederne mindre og mere kompakte
+            st.image(item['image_path'], width=150)
             
-            # Data badge
-            shade_info = f"{data.get('shade', 'Mellem')} {data.get('primary_color', '')}"
-            st.markdown(f"<div class='data-badge'>{shade_info}</div>", unsafe_allow_html=True)
+            # Kombinerer nu navn og farve-info på én linje
+            shade_info = f"({data.get('shade', 'Mellem')} {data.get('primary_color', '')})"
+            st.caption(f"✅ {data['display_name']} {shade_info}")
             
             if st.button("Fjern", key=f"del_{cat}"):
                 del st.session_state.outfit[cat]
@@ -171,7 +162,7 @@ else:
             # Vis mulighederne
             if not valid_items:
                 st.error(f"Ingen {CATEGORY_LABELS[cat].lower()} matcher dit nuværende valg!")
-                st.caption("Tip: Tjek 'Data-badget' på dit valgte tøj ovenfor. Måske er dine sko for 'kritiske' over for farven?")
+                st.caption("Tip: Tjek farve-info på dit valgte tøj ovenfor. Måske er dine sko for 'kritiske' over for farven?")
             else:
                 img_cols = st.columns(3)
                 for idx, (score, item) in enumerate(valid_items):
