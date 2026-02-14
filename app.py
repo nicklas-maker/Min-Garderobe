@@ -77,7 +77,7 @@ def check_compatibility(candidate, current_outfit):
     return is_valid, total_score
 
 # --- UI SETUP ---
-st.set_page_config(page_title="Min Garderobe", page_icon="👔", layout="wide")
+st.set_page_config(page_title="Garderoben", page_icon="👔", layout="wide")
 
 st.markdown("""
 <style>
