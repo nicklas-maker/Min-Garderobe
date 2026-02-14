@@ -7,8 +7,6 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 
 # --- KONFIGURATION ---
-BUCKET_NAME = "min-garderobe-app.appspot.com" # Husk at denne skal matche din bucket
-
 CATEGORIES = ["Top", "Bund", "Strømper", "Sko", "Overtøj"]
 CATEGORY_LABELS = {
     "Overtøj": "Overtøj",
@@ -22,11 +20,11 @@ CATEGORY_LABELS = {
 if not firebase_admin._apps:
     if os.path.exists("firestore_key.json"):
         cred = credentials.Certificate("firestore_key.json")
-        firebase_admin.initialize_app(cred, {'storageBucket': BUCKET_NAME})
+        firebase_admin.initialize_app(cred)
     elif "firebase" in st.secrets:
         key_dict = dict(st.secrets["firebase"])
         cred = credentials.Certificate(key_dict)
-        firebase_admin.initialize_app(cred, {'storageBucket': BUCKET_NAME})
+        firebase_admin.initialize_app(cred)
     else:
         st.error("Mangler Firebase nøgle! (firestore_key.json eller Secrets)")
         st.stop()
@@ -42,8 +40,8 @@ def get_coordinates(city_name):
         response = requests.get(url).json()
         if "results" in response:
             return response["results"][0]["latitude"], response["results"][0]["longitude"]
-    except:
-        pass
+    except Exception as e:
+        st.sidebar.error(f"Kunne ikke finde koordinater: {e}")
     return None, None
 
 def get_weather_forecast(lat, lon):
@@ -57,7 +55,7 @@ def get_weather_forecast(lat, lon):
         
         # Ekstra tjek: Fik vi de forventede data?
         if 'daily' not in data:
-            st.warning(f"Vejrtjeneste svar: {data}") # Vis hvad vi fik i stedet
+            st.sidebar.error(f"Vejrdata mangler 'daily'. API Svar: {data}")
             return None
 
         daily = data['daily']
@@ -65,10 +63,18 @@ def get_weather_forecast(lat, lon):
         
         # Find temperatur kl 08:00 (index 8)
         # Vi bruger min(..., 23) for at sikre at vi ikke crasher sent på dagen hvis index løber tør
-        temp_morning = hourly['temperature_2m'][8]
+        # Vi tjekker også om listen overhovedet er lang nok
+        if len(hourly['temperature_2m']) > 8:
+            temp_morning = hourly['temperature_2m'][8]
+        else:
+            temp_morning = daily['temperature_2m_max'][0] # Fallback
+
         current_hour = min(datetime.now().hour, 23)
-        feels_like_now = hourly['apparent_temperature'][current_hour]
-        
+        if len(hourly['apparent_temperature']) > current_hour:
+            feels_like_now = hourly['apparent_temperature'][current_hour]
+        else:
+            feels_like_now = daily['temperature_2m_max'][0] # Fallback
+
         return {
             "temp_max": daily['temperature_2m_max'][0],
             "temp_min": daily['temperature_2m_min'][0],
@@ -78,8 +84,8 @@ def get_weather_forecast(lat, lon):
             "wind_kph": daily['wind_speed_10m_max'][0]
         }
     except Exception as e:
-        # Vis fejlen diskret så resten af appen stadig virker
-        print(f"Vejrfejl: {e}") 
+        # Vis fejlen direkte i sidebaren så vi kan se den på mobilen
+        st.sidebar.error(f"Vejrfejl: {e}") 
         return None
 
 # --- HISTORIK FUNKTIONER ---
@@ -283,6 +289,7 @@ with st.sidebar:
     # Hent vejr
     weather_data = None
     lat, lon = get_coordinates(city)
+    
     if lat and lon:
         weather_data = get_weather_forecast(lat, lon)
         if weather_data:
