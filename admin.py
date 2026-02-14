@@ -4,15 +4,17 @@ import os
 from datetime import datetime
 import firebase_admin
 from firebase_admin import credentials, firestore
+from github import Github # Det nye bibliotek
 
 # --- KONFIGURATION ---
-IMAGE_FOLDER = "img"
 KEY_FILE = "firestore_key.json"
 
-# 1. Opret billed-mappe
-os.makedirs(IMAGE_FOLDER, exist_ok=True)
+# --- GITHUB SETUP ---
+# Indsæt din token her (eller brug st.secrets hvis du vil være avanceret)
+GITHUB_TOKEN = "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" # <--- INDSÆT DIN TOKEN (ghp_...)
+GITHUB_REPO_NAME = "nicklas-maker/Min-Garderobe" # <--- INDSÆT DIT REPO NAVN (fx "nicklas/min-garderobe")
 
-# 2. Forbind til Firebase (Kun én gang)
+# 1. Forbind til Firebase (Kun database)
 if not firebase_admin._apps:
     try:
         cred = credentials.Certificate(KEY_FILE)
@@ -33,6 +35,7 @@ Din opgave er at returnere struktureret JSON data. Du må IKKE opfinde dine egne
 
 1. IDENTIFIKATION:
 - Hovedkategori: [Top, Bund, Sko, Strømper, Overtøj]
+  * VIGTIGT: Hvis genstanden er en 'Overshirt', 'Cardigan', 'Zip-up' eller en kraftig skjorte beregnet til at have åben over en t-shirt (lag-på-lag), SKAL den kategoriseres som 'Overtøj', ikke 'Top'.
 - Type: Vælg den mest præcise fra listen: [T-shirt, Polo, Skjorte, Strik, Sweatshirt, Vest, Jeans, Chinos, Habitbukser, Sweatpants, Shorts, Sneakers, Støvler, Pæne Sko, Loafers, Jakke, Frakke, Blazer, Cardigan, Overshirt, Dress, Sport, Uld].
 - Display Navn: Generer et kort, beskrivende navn på dansk på max 4 ord (F.eks. "Olivengrøn Strik", "Mørkeblå Chinos").
 - Primær Farve: Vælg den tætteste fra [Sort, Hvid, Grå, Navy, Blå, Beige, Brun, Grøn, Rød, Accent]
@@ -68,13 +71,13 @@ Baseret på din viden om 'Heritage / Classic Menswear', lav lister over hvilke f
   }
 }"""
 
-st.set_page_config(page_title="Garderobe Admin (Cloud)", page_icon="☁️", layout="centered")
+st.set_page_config(page_title="Garderobe Admin (GitHub Storage)", page_icon="☁️", layout="centered")
 
 if 'form_key' not in st.session_state:
     st.session_state.form_key = 0
 
 st.title("☁️ Garderobe Admin")
-st.caption("Forbundet til Google Firestore Database")
+st.caption("Uploader billeder til GitHub & data til Firestore")
 
 if 'last_added' in st.session_state:
     st.toast(st.session_state.last_added, icon="✅")
@@ -103,55 +106,63 @@ if uploaded_file is not None:
         key=f"json_{st.session_state.form_key}"
     )
 
-    # 3. GEM (I CLOUD)
-    if st.button("☁️ Gem i Skyen", type="primary"):
+    # 3. GEM (GITHUB + FIRESTORE)
+    if st.button("🚀 Gem i Skyen", type="primary"):
         if not json_input.strip():
             st.error("⚠️ Mangler JSON data!")
+        elif "DIN_GITHUB_TOKEN" in GITHUB_TOKEN:
+            st.error("⚠️ Du mangler at indsætte din GitHub Token i koden (admin.py)!")
         else:
             try:
                 # A. Valider JSON
                 data = json.loads(json_input)
                 
-                # B. Gem billede LOKALT (skal stadig til GitHub)
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                original_ext = uploaded_file.name.split(".")[-1]
-                new_filename = f"img_{timestamp}.{original_ext}"
-                save_path = os.path.join(IMAGE_FOLDER, new_filename)
-                # Tilret sti til Linux-format til databasen
-                db_image_path = save_path.replace("\\", "/") 
+                with st.spinner("Uploader billede til GitHub..."):
+                    # B. Upload billede til GITHUB
+                    g = Github(GITHUB_TOKEN)
+                    repo = g.get_repo(GITHUB_REPO_NAME)
+                    
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    original_ext = uploaded_file.name.split(".")[-1]
+                    filename = f"img_{timestamp}.{original_ext}"
+                    path_in_repo = f"img/{filename}"
+                    
+                    # Opret filen på GitHub
+                    commit_message = f"Tilføjet {data.get('display_name', 'nyt tøj')} via Admin"
+                    repo.create_file(path_in_repo, commit_message, uploaded_file.getvalue())
+                    
+                    # C. Konstruer RAW URL (Direkte link til billedet)
+                    # Format: https://raw.githubusercontent.com/USER/REPO/main/img/filename.jpg
+                    # Bemærk: Vi antager din branch hedder 'main'. Hvis den hedder 'master', ret herunder.
+                    raw_url = f"https://raw.githubusercontent.com/{GITHUB_REPO_NAME}/main/{path_in_repo}"
                 
-                with open(save_path, "wb") as f:
-                    f.write(uploaded_file.getbuffer())
+                # D. Gem data i FIRESTORE (Med linket)
+                doc_ref = db.collection("wardrobe").document()
                 
-                # C. Gem data i FIRESTORE (Cloud)
-                doc_ref = db.collection("wardrobe").document() # Lav nyt tomt dokument
-                
-                # Byg datapakken
                 item_entry = {
-                    "filename": new_filename,
-                    "image_path": db_image_path,
+                    "filename": filename,
+                    "image_path": raw_url, # Vi gemmer internet-linket
                     "analysis": data,
-                    "created_at": firestore.SERVER_TIMESTAMP # Tidspunkt for sortering
+                    "created_at": firestore.SERVER_TIMESTAMP
                 }
                 
                 doc_ref.set(item_entry)
                 
-                # D. Reset
-                st.session_state.last_added = f"Gemt i skyen! '{data.get('display_name', 'Tøjet')}'"
+                # E. Reset
+                st.session_state.last_added = f"Gemt! Billede på GitHub, Data i DB."
                 st.session_state.form_key += 1 
                 st.rerun()
                 
             except json.JSONDecodeError as e:
                 st.error(f"Fejl i JSON: {e}")
             except Exception as e:
-                st.error(f"System fejl: {str(e)}")
+                st.error(f"Fejl: {str(e)}")
 
 # --- DATABASE STATUS ---
 st.divider()
 try:
-    # Tæl antal dokumenter (lidt groft, men virker)
     docs = db.collection("wardrobe").stream()
     count = sum(1 for _ in docs)
-    st.info(f"Antal stykker tøj i din Cloud Database: **{count}**")
+    st.info(f"Antal stykker tøj i Cloud Database: **{count}**")
 except:
-    st.warning("Kunne ikke læse status fra databasen.")
+    pass
