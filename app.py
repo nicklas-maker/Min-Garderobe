@@ -113,29 +113,32 @@ if st.sidebar.button("🗑️ Nulstil Outfit"):
     st.session_state.outfit = {}
     st.rerun()
 
-# --- VISNING AF OUTFIT GRID ---
-cols = st.columns(len(CATEGORIES))
+# --- VISNING AF OUTFIT GRID (Opdateret: Kun valgte items) ---
+# Find de kategorier, der faktisk er valgt (i den rigtige rækkefølge)
+selected_cats = [cat for cat in CATEGORIES if cat in st.session_state.outfit]
 
-for i, cat in enumerate(CATEGORIES):
-    display_label = CATEGORY_LABELS[cat]
+if selected_cats:
+    # Lav kun kolonner til det antal ting vi har valgt
+    cols = st.columns(len(selected_cats))
     
-    with cols[i]:
-        if cat in st.session_state.outfit:
-            # Vis valgt item
-            item = st.session_state.outfit[cat]
-            data = item['analysis']
+    for i, cat in enumerate(selected_cats):
+        item = st.session_state.outfit[cat]
+        data = item['analysis']
+        
+        with cols[i]:
             st.image(item['image_path'], use_container_width=True)
             st.caption(f"✅ {data['display_name']}")
             
-            # NYT: Vis data badge for fejlfinding
+            # Data badge
             shade_info = f"{data.get('shade', 'Mellem')} {data.get('primary_color', '')}"
             st.markdown(f"<div class='data-badge'>{shade_info}</div>", unsafe_allow_html=True)
             
             if st.button("Fjern", key=f"del_{cat}"):
                 del st.session_state.outfit[cat]
                 st.rerun()
-        else:
-            st.info(f"{display_label} mangler")
+else:
+    # Hvis intet er valgt endnu, vis en venlig start-besked
+    st.info("Start med at vælge en del af dit outfit nedenfor 👇")
 
 st.divider()
 
@@ -168,7 +171,6 @@ else:
             # Vis mulighederne
             if not valid_items:
                 st.error(f"Ingen {CATEGORY_LABELS[cat].lower()} matcher dit nuværende valg!")
-                # Lille hjælpetekst
                 st.caption("Tip: Tjek 'Data-badget' på dit valgte tøj ovenfor. Måske er dine sko for 'kritiske' over for farven?")
             else:
                 img_cols = st.columns(3)
@@ -179,7 +181,6 @@ else:
                         data = item['analysis']
                         name = data['display_name']
                         
-                        # NYT: Inkluder shade i knap-teksten for overblik
                         shade_str = f"({data.get('shade', 'Mellem')} {data.get('primary_color', '')})"
                         
                         label_text = f"{name}\n{shade_str}"
