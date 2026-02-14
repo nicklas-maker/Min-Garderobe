@@ -118,7 +118,7 @@ if selected_cats:
         
         with cols[i]:
             # Sætter en fast bredde (150px) for at gøre billederne mindre og mere kompakte
-            st.image(item['image_path'], width=175)
+            st.image(item['image_path'], width=275)
             
             # Kombinerer nu navn og farve-info på én linje
             shade_info = f"({data.get('shade', 'Mellem')} {data.get('primary_color', '')})"
