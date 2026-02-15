@@ -5,7 +5,7 @@ from datetime import datetime
 import firebase_admin
 from firebase_admin import credentials, firestore
 from github import Github
-import google.generativeai as genai
+from google import genai
 from PIL import Image
 
 # --- KONFIGURATION ---
@@ -19,7 +19,6 @@ try:
     
     # 2. Google Gemini Setup
     GOOGLE_API_KEY = st.secrets["google_api_key"]
-    genai.configure(api_key=GOOGLE_API_KEY)
     
 except FileNotFoundError:
     st.error("⚠️ Mangler 'secrets.toml'! Husk at tilføje både GitHub og Google API Keys.")
@@ -113,17 +112,18 @@ if uploaded_file is not None:
     if st.button("✨ Analyser Billede (Gemini Pro)", type="secondary"):
         with st.spinner("Spørger stylisten..."):
             try:
-                # Opsætning af modellen
-                model = genai.GenerativeModel(
-                    model_name="gemini-1.5-pro",
-                    generation_config={
+                # Opsætning af klienten (Ny SDK syntaks)
+                client = genai.Client(api_key=GOOGLE_API_KEY)
+                
+                # Send billede og prompt
+                response = client.models.generate_content(
+                    model="gemini-1.5-pro",
+                    contents=[AI_PROMPT, image],
+                    config={
                         "temperature": 0,
                         "response_mime_type": "application/json"
                     }
                 )
-                
-                # Send billede og prompt
-                response = model.generate_content([AI_PROMPT, image])
                 
                 # Gem resultatet i session state så det vises i tekstfeltet
                 st.session_state.ai_result = response.text
