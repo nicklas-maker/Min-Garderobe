@@ -1,0 +1,12 @@
+Streamlit secrets (MÅ IKKE SLETTE DENNE LINJE)
+
+.streamlit/secrets.toml
+
+Python cache
+
+pycache/
+*.pyc
+
+Firebase nøgle (hvis du har den liggende lokalt)
+
+firestore_key.json
