@@ -109,15 +109,16 @@ if uploaded_file is not None:
     # 2. AI ANALYSE KNAP
     st.subheader("2. Analyser med AI")
     
-    if st.button("✨ Analyser Billede (Gemini Flash)", type="secondary"):
+    if st.button("✨ Analyser Billede (Gemini Pro)", type="secondary"):
         with st.spinner("Spørger stylisten..."):
+            # Opsætning af klienten
+            client = genai.Client(api_key=GOOGLE_API_KEY)
+            
             try:
-                # Opsætning af klienten (Ny SDK syntaks)
-                client = genai.Client(api_key=GOOGLE_API_KEY)
-                
                 # Send billede og prompt
+                # Vi prøver først med den ønskede model
                 response = client.models.generate_content(
-                    model="gemini-1.5-flash",
+                    model="gemini-1.5-pro",
                     contents=[AI_PROMPT, image],
                     config={
                         "temperature": 0,
@@ -131,6 +132,23 @@ if uploaded_file is not None:
                 
             except Exception as e:
                 st.error(f"AI Fejl: {str(e)}")
+                
+                # --- DEBUGGING: LISTE OVER TILGÆNGELIGE MODELLER ---
+                st.warning("⚠️ Kunne ikke finde modellen. Her er de modeller, din nøgle har adgang til:")
+                try:
+                    # Hent liste over modeller
+                    models_iter = client.models.list()
+                    # Filtrer kun gemini modeller for overblik
+                    model_names = [m.name for m in models_iter if "gemini" in m.name]
+                    
+                    if model_names:
+                        st.code("\n".join(model_names), language="text")
+                        st.info("Kopier en af ovenstående modeller (f.eks. 'gemini-1.5-pro-001') og bed om at få opdateret koden med dette navn.")
+                    else:
+                        st.error("Ingen Gemini-modeller fundet for denne nøgle.")
+                        
+                except Exception as list_e:
+                    st.error(f"Kunne heller ikke hente modelliste: {list_e}")
 
     # 3. JSON RESULTAT (Kan redigeres)
     st.caption("Verificer data før du gemmer:")
