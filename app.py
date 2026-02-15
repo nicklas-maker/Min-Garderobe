@@ -50,28 +50,21 @@ def fetch_weather_api_data(lat, lon):
     """
     Intern funktion der henter data fra API. 
     Vi adskiller denne for at sikre, at vi kun cacher SUCCES.
-    Hvis denne fejler (fx 429), cacher Streamlit IKKE resultatet, 
-    så vi kan prøve igen senere.
     """
     url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max&hourly=temperature_2m,apparent_temperature&forecast_days=1&timezone=auto"
     response = requests.get(url)
-    response.raise_for_status() # Kaster fejl hvis status ikke er 200 OK
+    response.raise_for_status() 
     return response.json()
 
 def get_weather_forecast(lat, lon):
     """Behandler vejrdata og håndterer fejl uden at crashe appen."""
     try:
-        # Hent data (cached hvis muligt)
         data = fetch_weather_api_data(lat, lon)
-        
-        # Ekstra tjek
-        if 'daily' not in data:
-            return None
+        if 'daily' not in data: return None
 
         daily = data['daily']
         hourly = data['hourly']
         
-        # Databehandling
         if len(hourly['temperature_2m']) > 8:
             temp_morning = hourly['temperature_2m'][8]
         else:
@@ -92,7 +85,6 @@ def get_weather_forecast(lat, lon):
             "wind_kph": daily['wind_speed_10m_max'][0]
         }
     except Exception as e:
-        # Vi printer fejlen til loggen, men crasher ikke UI'et
         print(f"Vejrfejl (ignoreret i UI): {e}") 
         return None
 
@@ -101,7 +93,6 @@ def get_weather_forecast(lat, lon):
 def save_outfit_to_history(outfit_items, weather_data, location):
     """Gemmer dagens outfit og vejr i 'history' samlingen."""
     
-    # Lav en liste med ID'er og metadata for nem analyse
     outfit_summary = []
     for item in outfit_items:
         data = item['analysis']
@@ -115,7 +106,7 @@ def save_outfit_to_history(outfit_items, weather_data, location):
         outfit_summary.append(summary)
 
     doc_data = {
-        "date": datetime.now(), # Firestore Timestamp
+        "date": datetime.now(),
         "location": location,
         "weather": weather_data,
         "outfit": outfit_summary
@@ -128,13 +119,10 @@ def get_relevant_history(current_temp_max):
     """Finder historik for dage der ligner i dag (+/- 3 grader)."""
     relevant_items = []
     try:
-        # Hent al historik (simpelt filter i Python for fleksibilitet)
         docs = db.collection("history").stream()
         for doc in docs:
             data = doc.to_dict()
             hist_temp = data.get('weather', {}).get('temp_max', 0)
-            
-            # Hvis temperaturen minder om i dag (+/- 3 grader)
             if abs(hist_temp - current_temp_max) <= 3:
                 for item in data.get('outfit', []):
                     relevant_items.append(item)
@@ -143,6 +131,32 @@ def get_relevant_history(current_temp_max):
     return relevant_items
 
 # --- SMART SCORE LOGIK ---
+
+def calculate_match_score(target_color, allowed_list):
+    """
+    Beregner point for farve-match inklusiv familie-regler.
+    Returnerer score (lav er bedst) eller None (ingen match).
+    """
+    # 1. Direkte match (Score = Index i listen)
+    if target_color in allowed_list:
+        return allowed_list.index(target_color)
+    
+    # 2. Synonym match (Score = 4 strafpoint)
+    # Definer "søskende" par
+    synonym = None
+    if target_color == "Hvid": synonym = "Creme"
+    elif target_color == "Creme": synonym = "Hvid"
+    elif target_color == "Navy": synonym = "Blå"
+    elif target_color == "Blå": synonym = "Navy"
+    elif target_color == "Grøn": synonym = "Oliven"
+    elif target_color == "Oliven": synonym = "Grøn"
+    elif target_color == "Rød": synonym = "Bordeaux"
+    elif target_color == "Bordeaux": synonym = "Rød"
+    
+    if synonym and synonym in allowed_list:
+        return 4 # Fast straf for at bruge "nød-farven"
+        
+    return None # Ingen match
 
 def calculate_smart_score(item, color_score, weather_data, history_items):
     """
@@ -160,46 +174,36 @@ def calculate_smart_score(item, color_score, weather_data, history_items):
         temp_feels = weather_data['feels_like_now']
         is_raining = weather_data['rain_mm'] > 0.5
         
-        # --- 1. HARDCODED FYSIK (Straf) ---
-        
         # Regn-regler
         if is_raining:
             if material in ['ruskind', 'nubuck', 'silke', 'hvidt canvas', 'canvas']:
-                penalty += 5 # Kæmpe straf
+                penalty += 5 
             if material in ['læder', 'voksbehandlet', 'gummi', 'syntetisk']:
-                bonus += 1 # Lille bonus for regntæt
+                bonus += 1
         
         # Temperatur-regler
-        if temp_feels > 22: # Varmt
+        if temp_feels > 22:
             if material in ['uld', 'tweed', 'fløjl'] or season == 'vinter':
                 penalty += 5
             if material in ['hør', 'seersucker'] or season == 'sommer':
                 bonus += 2
-                
-        elif temp_feels < 10: # Koldt
+        elif temp_feels < 10:
             if material in ['hør', 'mesh'] or season == 'sommer':
                 penalty += 5
             if material in ['uld', 'kashmir', 'dun'] or season == 'vinter':
                 bonus += 2
 
-    # --- 2. TILLÆRT HISTORIK (Bonus) ---
-    # Har vi valgt denne type/materiale før i dette vejr?
+    # Historik Bonus
     if history_items:
         match_count = 0
         for hist_item in history_items:
-            # Vi tjekker om Type og Materiale matcher
             if hist_item.get('type') == item_type and hist_item.get('material', '').lower() == material:
                 match_count += 1
-        
-        # Giv bonus baseret på popularitet
-        if match_count > 2:
-            bonus += 2 # Brugeren kan lide dette!
-        if match_count > 5:
-            bonus += 2 # Brugeren ELSKER dette!
+        if match_count > 2: bonus += 2
+        if match_count > 5: bonus += 2
 
-    # Samlet regnskab
     total_score = color_score + penalty - bonus
-    return total_score, penalty # Returner også penalty så vi kan vise advarsel
+    return total_score, penalty
 
 # --- HOVED LOGIK ---
 
@@ -220,7 +224,9 @@ def get_items_by_category(items, category):
     return [i for i in items if i['analysis']['category'] == category]
 
 def check_compatibility_basic(candidate, current_outfit):
-    """Den rene farve-matematik (som før)."""
+    """
+    Den rene farve-matematik med familie-regler.
+    """
     if not current_outfit:
         return True, 0
 
@@ -240,9 +246,11 @@ def check_compatibility_basic(candidate, current_outfit):
         allowed_by_selected = sel_data['compatibility'].get(cand_cat, [])
         allowed_by_candidate = cand_data['compatibility'].get(sel_cat, [])
 
-        if cand_color in allowed_by_selected and sel_color in allowed_by_candidate:
-            score1 = allowed_by_selected.index(cand_color)
-            score2 = allowed_by_candidate.index(sel_color)
+        # Brug den nye hjælpefunktion til at tjekke match (inkl. synonymer)
+        score1 = calculate_match_score(cand_color, allowed_by_selected)
+        score2 = calculate_match_score(sel_color, allowed_by_candidate)
+
+        if score1 is not None and score2 is not None:
             total_color_score += (score1 + score2)
         else:
             is_valid = False
@@ -299,17 +307,13 @@ with st.sidebar:
     lat, lon = get_coordinates(city)
     
     if lat and lon:
-        # Prøv at hente nyt vejr
         new_weather_data = get_weather_forecast(lat, lon)
-        
-        # Hvis vi fik data, brug det. Hvis ikke, se om vi har gammelt data vi kan bruge.
         if new_weather_data:
             weather_data = new_weather_data
-            st.session_state.weather = weather_data # Gem til næste gang
+            st.session_state.weather = weather_data 
         elif 'weather' in st.session_state:
-            # FALLBACK: Hvis API fejler (429), brug det gamle vejr
             weather_data = st.session_state.weather
-            st.warning("Kunne ikke opdatere vejr (bruger gemt data).")
+            st.warning("Bruger gemt vejr (kunne ikke opdatere).")
         
         if weather_data:
             st.markdown(f"""
@@ -331,7 +335,7 @@ if not wardrobe:
     st.info("Databasen er tom. Tilføj tøj via admin.py.")
     st.stop()
 
-# Hent relevant historik til algoritmen
+# Hent relevant historik
 history_items = []
 if weather_data:
     history_items = get_relevant_history(weather_data['temp_max'])
@@ -373,7 +377,7 @@ if not missing_cats:
     st.balloons()
     st.success("🎉 Dit outfit er komplet!")
 
-# GEM OUTFIT KNAP (Vises altid hvis man har valgt mindst én ting)
+# GEM OUTFIT KNAP
 if st.session_state.outfit:
     if st.button("✅ Gem & Bær Dagens Outfit", type="primary", use_container_width=True):
         if weather_data:
@@ -393,7 +397,7 @@ if missing_cats:
             valid_items_with_score = []
             current_selection_list = list(st.session_state.outfit.values())
             
-            # 1. Kør Farve-Matematik
+            # 1. Kør Farve-Matematik (Inkl. familie-regler)
             for item in all_items:
                 is_valid, color_score = check_compatibility_basic(item, current_selection_list)
                 if is_valid:
@@ -430,9 +434,9 @@ if missing_cats:
                         
                         # Vis Vejr-Advarsel hvis straffen er høj
                         if penalty >= 5:
-                            icon_prefix += "☔/❄️ " # Generel vejr advarsel
+                            icon_prefix += "☔/❄️ " 
                         
-                        # Tier Ikoner (Baseret på den rene farve-score, ikke vejr-score, for klarhedens skyld)
+                        # Tier Ikoner (Baseret på den rene farve-score)
                         elif st.session_state.outfit:
                             if color_score == 0: icon_prefix += "⭐ "
                             elif color_score == 1: icon_prefix += "1️⃣ "
