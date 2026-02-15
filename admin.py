@@ -109,7 +109,7 @@ if uploaded_file is not None:
     # 2. AI ANALYSE KNAP
     st.subheader("2. Analyser med AI")
     
-    if st.button("✨ Analyser Billede (Gemini Pro)", type="secondary"):
+    if st.button("✨ Analyser Billede (Gemini Flash)", type="secondary"):
         with st.spinner("Spørger stylisten..."):
             try:
                 # Opsætning af klienten (Ny SDK syntaks)
@@ -117,7 +117,7 @@ if uploaded_file is not None:
                 
                 # Send billede og prompt
                 response = client.models.generate_content(
-                    model="gemini-1.5-pro",
+                    model="gemini-1.5-flash",
                     contents=[AI_PROMPT, image],
                     config={
                         "temperature": 0,
