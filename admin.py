@@ -4,15 +4,23 @@ import os
 from datetime import datetime
 import firebase_admin
 from firebase_admin import credentials, firestore
-from github import Github # Det nye bibliotek
+from github import Github
 
 # --- KONFIGURATION ---
 KEY_FILE = "firestore_key.json"
 
-# --- GITHUB SETUP ---
-# Indsæt din token her (eller brug st.secrets hvis du vil være avanceret)
-GITHUB_TOKEN = "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" # <--- INDSÆT DIN TOKEN (ghp_...)
-GITHUB_REPO_NAME = "nicklas-maker/Min-Garderobe" # <--- INDSÆT DIT REPO NAVN (fx "nicklas/min-garderobe")
+# --- GITHUB SETUP (Sikker Version) ---
+# Vi henter nu token fra .streamlit/secrets.toml via st.secrets
+try:
+    # Denne kommando kigger i din lokale secrets.toml fil
+    GITHUB_TOKEN = st.secrets["github_token"]
+    GITHUB_REPO_NAME = st.secrets["github_repo"]
+except FileNotFoundError:
+    st.error("⚠️ Mangler 'secrets.toml'! Du har glemt at oprette den hemmelige fil.")
+    st.stop()
+except KeyError:
+    st.error("⚠️ Din secrets.toml fil er tom eller mangler 'github_token'/'github_repo'.")
+    st.stop()
 
 # 1. Forbind til Firebase (Kun database)
 if not firebase_admin._apps:
@@ -28,7 +36,7 @@ db = firestore.client()
 # --- AI PROMPT ---
 AI_PROMPT = """ANALYSE INSTRUKTION:
 
-
+[VALGFRIT: Skriv evt. "Dette er overtøj" eller "Dette er en top" her for at hjælpe mig, hvis det er tvetydigt]
 
 Du skal analysere det vedhæftede billede af et stykke herretøj.
 Din opgave er at returnere struktureret JSON data. Du må IKKE opfinde dine egne værdier til de faste felter - du SKAL vælge fra listerne herunder.
@@ -51,6 +59,7 @@ Baseret på din viden om 'Heritage / Classic Menswear', lav lister over hvilke f
 - Tone-i-Tone: Husk også at inkludere 'tone-i-tone' matches, men sørg for at anbefale kontrast i intensitet (f.eks. Mørk Top til Lyse Bukser).
 - Brug KUN farvenavnene fra listen ovenfor.
 
+
 3. OUTPUT FORMAT (JSON):
 {
   "category": "String",
@@ -71,13 +80,13 @@ Baseret på din viden om 'Heritage / Classic Menswear', lav lister over hvilke f
   }
 }"""
 
-st.set_page_config(page_title="Garderobe Admin (GitHub Storage)", page_icon="☁️", layout="centered")
+st.set_page_config(page_title="Garderobe Admin (Sikker)", page_icon="🔒", layout="centered")
 
 if 'form_key' not in st.session_state:
     st.session_state.form_key = 0
 
 st.title("☁️ Garderobe Admin")
-st.caption("Uploader billeder til GitHub & data til Firestore")
+st.caption("Uploader billeder til GitHub (Sikkert) & data til Firestore")
 
 if 'last_added' in st.session_state:
     st.toast(st.session_state.last_added, icon="✅")
@@ -110,15 +119,13 @@ if uploaded_file is not None:
     if st.button("🚀 Gem i Skyen", type="primary"):
         if not json_input.strip():
             st.error("⚠️ Mangler JSON data!")
-        elif "DIN_GITHUB_TOKEN" in GITHUB_TOKEN:
-            st.error("⚠️ Du mangler at indsætte din GitHub Token i koden (admin.py)!")
         else:
             try:
                 # A. Valider JSON
                 data = json.loads(json_input)
                 
                 with st.spinner("Uploader billede til GitHub..."):
-                    # B. Upload billede til GITHUB
+                    # B. Upload billede til GITHUB (Bruger token fra secrets)
                     g = Github(GITHUB_TOKEN)
                     repo = g.get_repo(GITHUB_REPO_NAME)
                     
@@ -132,8 +139,6 @@ if uploaded_file is not None:
                     repo.create_file(path_in_repo, commit_message, uploaded_file.getvalue())
                     
                     # C. Konstruer RAW URL (Direkte link til billedet)
-                    # Format: https://raw.githubusercontent.com/USER/REPO/main/img/filename.jpg
-                    # Bemærk: Vi antager din branch hedder 'main'. Hvis den hedder 'master', ret herunder.
                     raw_url = f"https://raw.githubusercontent.com/{GITHUB_REPO_NAME}/main/{path_in_repo}"
                 
                 # D. Gem data i FIRESTORE (Med linket)
@@ -141,7 +146,7 @@ if uploaded_file is not None:
                 
                 item_entry = {
                     "filename": filename,
-                    "image_path": raw_url, # Vi gemmer internet-linket
+                    "image_path": raw_url, 
                     "analysis": data,
                     "created_at": firestore.SERVER_TIMESTAMP
                 }
@@ -149,7 +154,7 @@ if uploaded_file is not None:
                 doc_ref.set(item_entry)
                 
                 # E. Reset
-                st.session_state.last_added = f"Gemt! Billede på GitHub, Data i DB."
+                st.session_state.last_added = f"Gemt sikkert! {data.get('display_name', 'Tøjet')}"
                 st.session_state.form_key += 1 
                 st.rerun()
                 
