@@ -116,7 +116,6 @@ if uploaded_file is not None:
             
             try:
                 # Send billede og prompt
-                # Vi prøver først med den ønskede model
                 response = client.models.generate_content(
                     model="gemini-2.5-pro",
                     contents=[AI_PROMPT, image],
@@ -126,29 +125,26 @@ if uploaded_file is not None:
                     }
                 )
                 
-                # Gem resultatet i session state så det vises i tekstfeltet
+                # --- VIGTIG RETTELSE: Tving opdatering af tekstfeltet ---
+                # Vi opdaterer session state direkte på feltets specifikke nøgle
+                text_area_key = f"json_{st.session_state.form_key}"
+                st.session_state[text_area_key] = response.text
+                
+                # Gem også som backup
                 st.session_state.ai_result = response.text
+                
                 st.rerun() # Genindlæs for at vise teksten
                 
             except Exception as e:
                 st.error(f"AI Fejl: {str(e)}")
                 
-                # --- DEBUGGING: LISTE OVER TILGÆNGELIGE MODELLER ---
-                st.warning("⚠️ Kunne ikke finde modellen. Her er de modeller, din nøgle har adgang til:")
+                st.warning("Debugging info:")
                 try:
-                    # Hent liste over modeller
                     models_iter = client.models.list()
-                    # Filtrer kun gemini modeller for overblik
                     model_names = [m.name for m in models_iter if "gemini" in m.name]
-                    
-                    if model_names:
-                        st.code("\n".join(model_names), language="text")
-                        st.info("Kopier en af ovenstående modeller (f.eks. 'gemini-1.5-pro-001') og bed om at få opdateret koden med dette navn.")
-                    else:
-                        st.error("Ingen Gemini-modeller fundet for denne nøgle.")
-                        
-                except Exception as list_e:
-                    st.error(f"Kunne heller ikke hente modelliste: {list_e}")
+                    st.code("\n".join(model_names))
+                except:
+                    pass
 
     # 3. JSON RESULTAT (Kan redigeres)
     st.caption("Verificer data før du gemmer:")
