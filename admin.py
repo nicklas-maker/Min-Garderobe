@@ -5,37 +5,44 @@ from datetime import datetime
 import firebase_admin
 from firebase_admin import credentials, firestore
 from github import Github
+import google.generativeai as genai
+from PIL import Image
 
 # --- KONFIGURATION ---
 KEY_FILE = "firestore_key.json"
 
-# --- GITHUB SETUP (Sikker Version) ---
-# Vi henter nu token fra .streamlit/secrets.toml via st.secrets
+# --- SETUP AF HEMMELIGHEDER (Secrets) ---
 try:
-    # Denne kommando kigger i din lokale secrets.toml fil
+    # 1. GitHub Setup
     GITHUB_TOKEN = st.secrets["github_token"]
     GITHUB_REPO_NAME = st.secrets["github_repo"]
+    
+    # 2. Google Gemini Setup
+    GOOGLE_API_KEY = st.secrets["google_api_key"]
+    genai.configure(api_key=GOOGLE_API_KEY)
+    
 except FileNotFoundError:
-    st.error("⚠️ Mangler 'secrets.toml'! Du har glemt at oprette den hemmelige fil.")
+    st.error("⚠️ Mangler 'secrets.toml'! Husk at tilføje både GitHub og Google API Keys.")
     st.stop()
-except KeyError:
-    st.error("⚠️ Din secrets.toml fil er tom eller mangler 'github_token'/'github_repo'.")
+except KeyError as e:
+    st.error(f"⚠️ Din secrets.toml mangler nøglen: {e}")
     st.stop()
 
-# 1. Forbind til Firebase (Kun database)
+# --- FIREBASE SETUP ---
 if not firebase_admin._apps:
     try:
         cred = credentials.Certificate(KEY_FILE)
         firebase_admin.initialize_app(cred)
     except Exception as e:
-        st.error(f"Kunne ikke forbinde til Firebase. Har du husket 'firestore_key.json'? Fejl: {e}")
+        st.error(f"Kunne ikke forbinde til Firebase. Fejl: {e}")
         st.stop()
 
 db = firestore.client()
 
-# --- AI PROMPT ---
+# --- AI PROMPT (Opdateret med nye farver og regler) ---
 AI_PROMPT = """ANALYSE INSTRUKTION:
 
+[VALGFRIT: Skriv evt. "Dette er overtøj" eller "Dette er en top" her for at hjælpe mig, hvis det er tvetydigt]
 
 Du skal analysere det vedhæftede billede af et stykke herretøj.
 Din opgave er at returnere struktureret JSON data. Du må IKKE opfinde dine egne værdier til de faste felter - du SKAL vælge fra listerne herunder.
@@ -79,52 +86,73 @@ Baseret på din viden om 'Heritage / Classic Menswear', lav lister over hvilke f
   }
 }"""
 
-st.set_page_config(page_title="Garderobe Admin (Sikker)", page_icon="🔒", layout="centered")
+st.set_page_config(page_title="Garderobe Admin (AI & Cloud)", page_icon="🤖", layout="centered")
 
 if 'form_key' not in st.session_state:
     st.session_state.form_key = 0
+if 'ai_result' not in st.session_state:
+    st.session_state.ai_result = ""
 
-st.title("☁️ Garderobe Admin")
-st.caption("Uploader billeder til GitHub (Sikkert) & data til Firestore")
+st.title("🤖 Garderobe Admin")
+st.caption("AI-indeksering med Gemini Pro • Billeder på GitHub • Data i Firestore")
 
 if 'last_added' in st.session_state:
     st.toast(st.session_state.last_added, icon="✅")
     del st.session_state.last_added
-
-# 0. HENT PROMPT
-st.subheader("0. Hent AI Prompt")
-st.markdown("Kopier teksten herunder ved at trykke på det lille **kopier-ikon** øverst til højre i boksen 👇")
-st.code(AI_PROMPT, language="text")
-st.markdown("🔗 **Genvej:** [Klik her for at åbne din Gemini AI Chat](https://gemini.google.com/gem/dfe5b48d941f)")
-st.divider()
 
 # 1. UPLOAD
 st.subheader("1. Vælg Billede")
 uploaded_file = st.file_uploader("Upload billede", type=["jpg", "png", "jpeg", "webp"], key=f"uploader_{st.session_state.form_key}")
 
 if uploaded_file is not None:
-    st.image(uploaded_file, caption="Preview", width=300)
+    image = Image.open(uploaded_file)
+    st.image(image, caption="Preview", width=300)
     
-    # 2. JSON
-    st.subheader("2. Indsæt JSON fra AI")
+    # 2. AI ANALYSE KNAP
+    st.subheader("2. Analyser med AI")
+    
+    if st.button("✨ Analyser Billede (Gemini Pro)", type="secondary"):
+        with st.spinner("Spørger stylisten..."):
+            try:
+                # Opsætning af modellen
+                model = genai.GenerativeModel(
+                    model_name="gemini-1.5-pro",
+                    generation_config={
+                        "temperature": 0,
+                        "response_mime_type": "application/json"
+                    }
+                )
+                
+                # Send billede og prompt
+                response = model.generate_content([AI_PROMPT, image])
+                
+                # Gem resultatet i session state så det vises i tekstfeltet
+                st.session_state.ai_result = response.text
+                st.rerun() # Genindlæs for at vise teksten
+                
+            except Exception as e:
+                st.error(f"AI Fejl: {str(e)}")
+
+    # 3. JSON RESULTAT (Kan redigeres)
+    st.caption("Verificer data før du gemmer:")
     json_input = st.text_area(
         "JSON Data", 
-        height=350, 
-        placeholder='{\n  "category": "Top",\n  ...\n}',
+        value=st.session_state.ai_result,
+        height=400, 
         key=f"json_{st.session_state.form_key}"
     )
 
-    # 3. GEM (GITHUB + FIRESTORE)
+    # 4. GEM (GITHUB + FIRESTORE)
     if st.button("🚀 Gem i Skyen", type="primary"):
         if not json_input.strip():
-            st.error("⚠️ Mangler JSON data!")
+            st.error("⚠️ Mangler data! Tryk på 'Analyser' først.")
         else:
             try:
                 # A. Valider JSON
                 data = json.loads(json_input)
                 
-                with st.spinner("Uploader billede til GitHub..."):
-                    # B. Upload billede til GITHUB (Bruger token fra secrets)
+                with st.spinner("Uploader til skyen..."):
+                    # B. Upload billede til GITHUB
                     g = Github(GITHUB_TOKEN)
                     repo = g.get_repo(GITHUB_REPO_NAME)
                     
@@ -133,14 +161,14 @@ if uploaded_file is not None:
                     filename = f"img_{timestamp}.{original_ext}"
                     path_in_repo = f"img/{filename}"
                     
-                    # Opret filen på GitHub
-                    commit_message = f"Tilføjet {data.get('display_name', 'nyt tøj')} via Admin"
+                    commit_message = f"Tilføjet {data.get('display_name', 'nyt tøj')}"
+                    # PyGithub kræver bytes eller string, getvalue() giver bytes
                     repo.create_file(path_in_repo, commit_message, uploaded_file.getvalue())
                     
-                    # C. Konstruer RAW URL (Direkte link til billedet)
+                    # C. Konstruer RAW URL
                     raw_url = f"https://raw.githubusercontent.com/{GITHUB_REPO_NAME}/main/{path_in_repo}"
                 
-                # D. Gem data i FIRESTORE (Med linket)
+                # D. Gem data i FIRESTORE
                 doc_ref = db.collection("wardrobe").document()
                 
                 item_entry = {
@@ -153,14 +181,15 @@ if uploaded_file is not None:
                 doc_ref.set(item_entry)
                 
                 # E. Reset
-                st.session_state.last_added = f"Gemt sikkert! {data.get('display_name', 'Tøjet')}"
+                st.session_state.last_added = f"Gemt! {data.get('display_name', 'Tøjet')}"
                 st.session_state.form_key += 1 
+                st.session_state.ai_result = "" # Nulstil AI tekst
                 st.rerun()
                 
             except json.JSONDecodeError as e:
-                st.error(f"Fejl i JSON: {e}")
+                st.error(f"Fejl i JSON formatet: {e}")
             except Exception as e:
-                st.error(f"Fejl: {str(e)}")
+                st.error(f"System fejl: {str(e)}")
 
 # --- DATABASE STATUS ---
 st.divider()
