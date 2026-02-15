@@ -109,7 +109,7 @@ if uploaded_file is not None:
     # 2. AI ANALYSE KNAP
     st.subheader("2. Analyser med AI")
     
-    if st.button("✨ Analyser Billede (Gemini Pro)", type="secondary"):
+    if st.button("✨ Analyser Billede (Gemini 2.5 Pro)", type="secondary"):
         with st.spinner("Spørger stylisten..."):
             # Opsætning af klienten
             client = genai.Client(api_key=GOOGLE_API_KEY)
@@ -118,7 +118,7 @@ if uploaded_file is not None:
                 # Send billede og prompt
                 # Vi prøver først med den ønskede model
                 response = client.models.generate_content(
-                    model="gemini-1.5-pro",
+                    model="gemini-2.5-pro",
                     contents=[AI_PROMPT, image],
                     config={
                         "temperature": 0,
