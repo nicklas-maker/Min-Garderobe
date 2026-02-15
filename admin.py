@@ -99,26 +99,45 @@ if 'last_added' in st.session_state:
     del st.session_state.last_added
 
 # 1. UPLOAD
-st.subheader("1. Vælg Billede")
-uploaded_file = st.file_uploader("Upload billede", type=["jpg", "png", "jpeg", "webp"], key=f"uploader_{st.session_state.form_key}")
+st.subheader("1. Vælg Billeder")
+uploaded_files = st.file_uploader(
+    "Upload billeder (Du kan vælge op til 2 - kun det første gemmes)", 
+    type=["jpg", "png", "jpeg", "webp"], 
+    key=f"uploader_{st.session_state.form_key}",
+    accept_multiple_files=True
+)
 
-if uploaded_file is not None:
-    image = Image.open(uploaded_file)
-    st.image(image, caption="Preview", width=300)
+if uploaded_files:
+    # Begræns til 2 billeder
+    files_to_process = uploaded_files[:2]
+    
+    # Hent og vis previews
+    cols = st.columns(len(files_to_process))
+    pil_images = []
+    
+    for i, file in enumerate(files_to_process):
+        image = Image.open(file)
+        pil_images.append(image)
+        with cols[i]:
+            caption = "Hovedbillede (Gemmes)" if i == 0 else "Ekstra (Kun til analyse)"
+            st.image(image, caption=caption, use_container_width=True)
     
     # 2. AI ANALYSE KNAP
     st.subheader("2. Analyser med AI")
     
-    if st.button("✨ Analyser Billede (Gemini 2.5 Pro)", type="secondary"):
+    if st.button("✨ Analyser Billeder (Gemini 2.5 Pro)", type="secondary"):
         with st.spinner("Spørger stylisten..."):
             # Opsætning af klienten
             client = genai.Client(api_key=GOOGLE_API_KEY)
             
             try:
-                # Send billede og prompt
+                # Send billeder og prompt
+                # Vi bygger indholdslisten: [Prompt, Billede1, Billede2]
+                contents = [AI_PROMPT] + pil_images
+                
                 response = client.models.generate_content(
                     model="gemini-2.5-pro",
-                    contents=[AI_PROMPT, image],
+                    contents=contents,
                     config={
                         "temperature": 0,
                         "response_mime_type": "application/json"
@@ -164,19 +183,22 @@ if uploaded_file is not None:
                 # A. Valider JSON
                 data = json.loads(json_input)
                 
+                # Hent hovedbilledet (det første)
+                main_file = files_to_process[0]
+                
                 with st.spinner("Uploader til skyen..."):
                     # B. Upload billede til GITHUB
                     g = Github(GITHUB_TOKEN)
                     repo = g.get_repo(GITHUB_REPO_NAME)
                     
                     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                    original_ext = uploaded_file.name.split(".")[-1]
+                    original_ext = main_file.name.split(".")[-1]
                     filename = f"img_{timestamp}.{original_ext}"
                     path_in_repo = f"img/{filename}"
                     
                     commit_message = f"Tilføjet {data.get('display_name', 'nyt tøj')}"
                     # PyGithub kræver bytes eller string, getvalue() giver bytes
-                    repo.create_file(path_in_repo, commit_message, uploaded_file.getvalue())
+                    repo.create_file(path_in_repo, commit_message, main_file.getvalue())
                     
                     # C. Konstruer RAW URL
                     raw_url = f"https://raw.githubusercontent.com/{GITHUB_REPO_NAME}/main/{path_in_repo}"
