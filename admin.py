@@ -42,7 +42,6 @@ db = firestore.client()
 # --- AI PROMPT (Opdateret med nye farver og regler) ---
 AI_PROMPT = """ANALYSE INSTRUKTION:
 
-[VALGFRIT: Skriv evt. "Dette er overtøj" eller "Dette er en top" her for at hjælpe mig, hvis det er tvetydigt]
 
 Du skal analysere det vedhæftede billede af et stykke herretøj.
 Din opgave er at returnere struktureret JSON data. Du må IKKE opfinde dine egne værdier til de faste felter - du SKAL vælge fra listerne herunder.
