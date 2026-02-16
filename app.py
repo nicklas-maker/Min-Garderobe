@@ -226,12 +226,14 @@ def get_items_by_category(items, category):
 def check_compatibility_basic(candidate, current_outfit):
     """
     Den rene farve-matematik med familie-regler.
+    Returnerer: is_valid, total_score, is_synonym_match
     """
     if not current_outfit:
-        return True, 0
+        return True, 0, False
 
     total_color_score = 0
     is_valid = True
+    is_synonym_match = False
 
     for selected_item in current_outfit:
         cand_data = candidate['analysis']
@@ -252,11 +254,14 @@ def check_compatibility_basic(candidate, current_outfit):
 
         if score1 is not None and score2 is not None:
             total_color_score += (score1 + score2)
+            # Tjek om vi brugte synonym-reglen (score på 4 eller derover betyder synonym)
+            if score1 >= 4 or score2 >= 4:
+                is_synonym_match = True
         else:
             is_valid = False
             break 
     
-    return is_valid, total_color_score
+    return is_valid, total_color_score, is_synonym_match
 
 def check_dead_end(candidate, current_outfit, wardrobe):
     temp_outfit = current_outfit + [candidate]
@@ -269,7 +274,8 @@ def check_dead_end(candidate, current_outfit, wardrobe):
             continue
         found_match = False
         for potential_item in potential_items:
-            is_valid, _ = check_compatibility_basic(potential_item, temp_outfit)
+            # Her behøver vi ikke tjekke synonym, kun validitet
+            is_valid, _, _ = check_compatibility_basic(potential_item, temp_outfit)
             if is_valid:
                 found_match = True
                 break 
@@ -399,11 +405,11 @@ if missing_cats:
             
             # 1. Kør Farve-Matematik (Inkl. familie-regler)
             for item in all_items:
-                is_valid, color_score = check_compatibility_basic(item, current_selection_list)
+                is_valid, color_score, is_synonym = check_compatibility_basic(item, current_selection_list)
                 if is_valid:
                     # 2. Kør SMART SCORE (Vejr + Historik)
                     smart_score, weather_penalty = calculate_smart_score(item, color_score, weather_data, history_items)
-                    valid_items_with_score.append((smart_score, item, color_score, weather_penalty))
+                    valid_items_with_score.append((smart_score, item, color_score, weather_penalty, is_synonym))
             
             # Sorter efter Smart Score (lavest er bedst)
             valid_items_with_score.sort(key=lambda x: x[0])
@@ -412,7 +418,7 @@ if missing_cats:
                 st.error(f"Ingen {CATEGORY_LABELS[cat].lower()} matcher farvevalget!")
             else:
                 img_cols = st.columns(3)
-                for idx, (smart_score, item, color_score, penalty) in enumerate(valid_items_with_score):
+                for idx, (smart_score, item, color_score, penalty, is_synonym) in enumerate(valid_items_with_score):
                     col = img_cols[idx % 3]
                     with col:
                         st.image(item['image_path'], use_container_width=True)
@@ -420,7 +426,11 @@ if missing_cats:
                         name = data['display_name']
                         shade_str = f"({data.get('shade', 'Mellem')} {data.get('primary_color', '')})"
                         
-                        label_text = f"{name}\n{shade_str}"
+                        label_text = f"{name}"
+                        # Tilføj advarsel hvis det er et synonym-match
+                        if is_synonym:
+                            label_text += " ❗️"
+                        label_text += f"\n{shade_str}"
                         
                         # --- IKON LOGIK ---
                         is_dead_end = False
