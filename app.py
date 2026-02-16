@@ -5,6 +5,9 @@ import requests
 from datetime import datetime
 import firebase_admin
 from firebase_admin import credentials, firestore
+from google import genai
+from PIL import Image
+from io import BytesIO
 
 # --- KONFIGURATION ---
 CATEGORIES = ["Top", "Bund", "Strømper", "Sko", "Overtøj"]
@@ -30,6 +33,70 @@ if not firebase_admin._apps:
         st.stop()
 
 db = firestore.client()
+
+# --- AI HELPER FUNCTIONS ---
+
+def load_image_from_url(url):
+    """Henter et billede fra en URL (GitHub) og gør det klar til AI."""
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+        return Image.open(BytesIO(response.content))
+    except Exception as e:
+        print(f"Kunne ikke hente billede: {e}")
+        return None
+
+def get_ai_feedback(outfit_items):
+    """Sender billederne til Gemini for en 'Smagsdommer' vurdering."""
+    
+    # 1. Find API Nøglen
+    api_key = None
+    # Tjek Secrets (Cloud) eller lokal fil
+    if "google_api_key" in st.secrets:
+        api_key = st.secrets["google_api_key"]
+    
+    if not api_key:
+        return "⚠️ Mangler Google API Nøgle i Secrets. Tilføj 'google_api_key' i Streamlit Cloud."
+
+    # 2. Hent billederne
+    images = []
+    for item in outfit_items:
+        img_url = item.get('image_path')
+        if img_url and img_url.startswith('http'):
+            img = load_image_from_url(img_url)
+            if img:
+                images.append(img)
+    
+    if not images:
+        return "⚠️ Kunne ikke finde billeder af outfittet. Er de uploadet korrekt?"
+
+    # 3. Prompten (Smagsdommeren)
+    system_instruction = """Du er en ærlig og direkte modeekspert med speciale i 'Modern Heritage' og klassisk herremode. Du foretrækker harmoni, jordfarver og tekstur.
+
+Din opgave:
+Se på de vedhæftede billeder, som udgør ét samlet outfit.
+
+Output format (Vær kort!):
+1. Start med DOMMEN: Enten '✅ Godkendt' eller '⚠️ Justering anbefales'.
+2. Giv KOMMENTAREN: Max 1-2 sætninger.
+   - Hvis godkendt: Hvorfor virker det? (Fx 'Godt spil mellem teksturerne').
+   - Hvis justering: Hvad clasher? (Fx 'Skoene er for formelle til de bukser').
+3. LØSNINGEN (Kun ved fejl): Foreslå specifikt én ting der skal ændres (Fx 'Prøv et par brune støvler i stedet')."""
+
+    # 4. Kald API'et
+    try:
+        client = genai.Client(api_key=api_key)
+        response = client.models.generate_content(
+            model="gemini-2.5-flash", # Flash er hurtig og god til dette
+            contents=images,
+            config={
+                "system_instruction": system_instruction,
+                "temperature": 0.5, # Lidt kreativitet til feedbacken
+            }
+        )
+        return response.text
+    except Exception as e:
+        return f"AI Fejl: {str(e)}"
 
 # --- VEJR FUNKTIONER ---
 
@@ -383,15 +450,28 @@ if not missing_cats:
     st.balloons()
     st.success("🎉 Dit outfit er komplet!")
 
-# GEM OUTFIT KNAP
+# GEM OUTFIT & BEDØM KNAPPER
 if st.session_state.outfit:
-    if st.button("✅ Gem & Bær Dagens Outfit", type="primary", use_container_width=True):
-        if weather_data:
-            with st.spinner("Gemmer i historikken..."):
-                save_outfit_to_history(list(st.session_state.outfit.values()), weather_data, city)
-            st.toast("Outfit gemt! Jeg lærer af din stil.", icon="🧠")
-        else:
-            st.error("Kan ikke gemme uden vejrdata. Prøv at indtaste din by igen i sidebaren.")
+    # Lav kolonner til knapperne
+    btn_col1, btn_col2 = st.columns(2)
+    
+    with btn_col1:
+        if st.button("🔮 Bedøm Outfit", type="secondary", use_container_width=True):
+            with st.spinner("Stylisten kigger på dit tøj..."):
+                feedback = get_ai_feedback(list(st.session_state.outfit.values()))
+                if "✅" in feedback:
+                    st.success(feedback)
+                else:
+                    st.info(feedback)
+
+    with btn_col2:
+        if st.button("✅ Gem & Bær", type="primary", use_container_width=True):
+            if weather_data:
+                with st.spinner("Gemmer i historikken..."):
+                    save_outfit_to_history(list(st.session_state.outfit.values()), weather_data, city)
+                st.toast("Outfit gemt! Jeg lærer af din stil.", icon="🧠")
+            else:
+                st.error("Kan ikke gemme uden vejrdata. Prøv at indtaste din by igen i sidebaren.")
 
 if missing_cats:
     st.subheader("Vælg næste del:")
