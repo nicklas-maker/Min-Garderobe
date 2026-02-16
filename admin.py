@@ -44,6 +44,16 @@ Du er en ekspert i 'Modern Heritage' og klassisk herremode (ofte kaldet 'Grandpa
 
 ANALYSE INSTRUKTION:
 
+FOKUS PÅ HOVEDGENSTANDEN:
+Billedet viser ofte en model, der bærer flere stykker tøj (f.eks. bukser sammen med sko og trøje).
+Din opgave er at identificere og analysere KUN DEN PRIMÆRE GENSTAND.
+- Identificer fokus: Hvilken genstand er central, fylder mest eller er tydeligst belyst?
+- Ignorer kontekst: Hvis billedet fokuserer på bukser, skal du fuldstændig ignorere skoene og overdelen modellen har på.
+- Ignorer krop: Se bort fra modellens hud, hår og positur.
+- Hvis du er i tvivl, vælg den genstand der udgør den største del af billedet.
+
+[VALGFRIT: Skriv evt. "Dette er overtøj" eller "Dette er en top" her for at hjælpe mig, hvis det er tvetydigt]
+
 Du skal analysere det vedhæftede billede af et stykke herretøj.
 Din opgave er at returnere struktureret JSON data. Du må IKKE opfinde dine egne værdier til de faste felter - du SKAL vælge fra listerne herunder.
 
@@ -134,10 +144,9 @@ if uploaded_files:
             
             try:
                 # --- KØRSEL 1: Den strenge (Base) ---
-                # Temp 0 for maksimal præcision
                 response1 = client.models.generate_content(
                     model="gemini-2.5-pro",
-                    contents=pil_images, # User Message: Kun billederne
+                    contents=pil_images, 
                     config={
                         "temperature": 0,
                         "response_mime_type": "application/json",
@@ -147,7 +156,6 @@ if uploaded_files:
                 data1 = json.loads(response1.text)
 
                 # --- KØRSEL 2: Den kreative (Supplement) ---
-                # Temp 0.4 for at finde alternativer vi måske missede
                 response2 = client.models.generate_content(
                     model="gemini-2.5-pro",
                     contents=pil_images,
@@ -159,32 +167,27 @@ if uploaded_files:
                 )
                 data2 = json.loads(response2.text)
 
-                # --- FLETNING (Ensemble Logic) ---
-                # Vi starter med data1 som fundament
+                # --- FLETNING ---
                 merged_data = data1.copy()
                 comp1 = merged_data.get("compatibility", {})
                 comp2 = data2.get("compatibility", {})
 
-                # Gennemgå alle kategorier og flet listerne
                 for category in ["Top", "Bund", "Sko", "Strømper", "Overtøj"]:
                     list1 = comp1.get(category, [])
                     list2 = comp2.get(category, [])
                     
-                    # Bevar rækkefølgen fra list1, men tilføj NYE ting fra list2 i bunden
                     existing_items = set(list1)
                     for item in list2:
                         if item not in existing_items:
-                            list1.append(item) # Tilføj til sidst (lavere rank)
+                            list1.append(item) 
                             existing_items.add(item)
                     
                     comp1[category] = list1
                 
                 merged_data["compatibility"] = comp1
-                
-                # Konverter tilbage til tekst for visning
                 final_json_text = json.dumps(merged_data, indent=2, ensure_ascii=False)
 
-                # Opdater UI
+                # Opdater session state
                 text_area_key = f"json_{st.session_state.form_key}"
                 st.session_state[text_area_key] = final_json_text
                 st.session_state.ai_result = final_json_text
@@ -193,21 +196,21 @@ if uploaded_files:
                 
             except Exception as e:
                 st.error(f"AI Fejl: {str(e)}")
-                # Debugging info hvis det går galt
-                try:
-                    models_iter = client.models.list()
-                    model_names = [m.name for m in models_iter if "gemini" in m.name]
-                    # st.code("\n".join(model_names)) # Udkommenteret for ikke at støje
-                except:
-                    pass
 
     # 3. JSON RESULTAT (Kan redigeres)
     st.caption("Verificer data før du gemmer:")
+    
+    # --- RETTELSE: Undgå 'widget created with default value' advarsel ---
+    # Vi tjekker om nøglen findes i session state. Hvis ikke, sætter vi den til vores 'ai_result' (eller tom).
+    # Derefter fjerner vi 'value=' parameteren fra selve widgeten.
+    widget_key = f"json_{st.session_state.form_key}"
+    if widget_key not in st.session_state:
+        st.session_state[widget_key] = st.session_state.ai_result
+
     json_input = st.text_area(
         "JSON Data", 
-        value=st.session_state.ai_result,
         height=400, 
-        key=f"json_{st.session_state.form_key}"
+        key=widget_key
     )
 
     # 4. GEM (GITHUB + FIRESTORE)
