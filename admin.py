@@ -44,7 +44,6 @@ Du er en ekspert i 'Modern Heritage' og klassisk herremode (ofte kaldet 'Grandpa
 
 ANALYSE INSTRUKTION:
 
-
 Du skal analysere det vedhæftede billede af et stykke herretøj.
 Din opgave er at returnere struktureret JSON data. Du må IKKE opfinde dine egne værdier til de faste felter - du SKAL vælge fra listerne herunder.
 
@@ -62,7 +61,7 @@ Din opgave er at returnere struktureret JSON data. Du må IKKE opfinde dine egne
 
 2. MATCHING REGLER (Kompatibilitet):
 Baseret på din viden om 'Modern Heritage', lav lister over hvilke farver der passer til dette item. Inkludér både de sikre neutrale valg og karakteristiske accentfarver som Rød, så længe de overholder den tidløse æstetik.
-- VIGTIGT: Sorter listerne! De absolut bedste/sikreste matches skal stå FØRST. Men inkludér både klassiske neutrale farver og dybe accentfarver (som f.eks. Rød/Bordeaux), der komplementerer stilen.
+- VIGTIGT: Sorter listerne! De absolut bedste matches skal stå FØRST. Men inkludér både klassiske neutrale farver og dybe accentfarver (som f.eks. Rød/Bordeaux), der komplementerer stilen samt sikre matches.
 - Familie-regel: Hvis en farvefamilie generelt passer (f.eks. blå nuancer), så skriv BÅDE 'Blå' og 'Navy' på listen over matches, medmindre det er et specifikt clash.
 - Tone-i-Tone: Husk også at inkludere 'tone-i-tone' matches, men sørg for at anbefale kontrast i intensitet (f.eks. Mørk Top til Lyse Bukser).
 - Brug KUN farvenavnene fra listen ovenfor.
@@ -128,39 +127,77 @@ if uploaded_files:
     # 2. AI ANALYSE KNAP
     st.subheader("2. Analyser med AI")
     
-    if st.button("✨ Analyser Billeder (Gemini 2.5 Pro)", type="secondary"):
-        with st.spinner("Spørger stylisten..."):
+    if st.button("✨ Analyser (2x Ensemble)", type="secondary"):
+        with st.spinner("Kører dobbelt-analyse for at fange alle matches..."):
             # Opsætning af klienten
             client = genai.Client(api_key=GOOGLE_API_KEY)
             
             try:
-                # Send billeder og prompt
-                # NYT: Vi bruger 'system_instruction' til prompten og sender kun billeder i contents
-                response = client.models.generate_content(
+                # --- KØRSEL 1: Den strenge (Base) ---
+                # Temp 0 for maksimal præcision
+                response1 = client.models.generate_content(
                     model="gemini-2.5-pro",
                     contents=pil_images, # User Message: Kun billederne
                     config={
                         "temperature": 0,
                         "response_mime_type": "application/json",
-                        "system_instruction": AI_PROMPT # System Message: Reglerne
+                        "system_instruction": AI_PROMPT
                     }
                 )
+                data1 = json.loads(response1.text)
+
+                # --- KØRSEL 2: Den kreative (Supplement) ---
+                # Temp 0.4 for at finde alternativer vi måske missede
+                response2 = client.models.generate_content(
+                    model="gemini-2.5-pro",
+                    contents=pil_images,
+                    config={
+                        "temperature": 0.2,
+                        "response_mime_type": "application/json",
+                        "system_instruction": AI_PROMPT
+                    }
+                )
+                data2 = json.loads(response2.text)
+
+                # --- FLETNING (Ensemble Logic) ---
+                # Vi starter med data1 som fundament
+                merged_data = data1.copy()
+                comp1 = merged_data.get("compatibility", {})
+                comp2 = data2.get("compatibility", {})
+
+                # Gennemgå alle kategorier og flet listerne
+                for category in ["Top", "Bund", "Sko", "Strømper", "Overtøj"]:
+                    list1 = comp1.get(category, [])
+                    list2 = comp2.get(category, [])
+                    
+                    # Bevar rækkefølgen fra list1, men tilføj NYE ting fra list2 i bunden
+                    existing_items = set(list1)
+                    for item in list2:
+                        if item not in existing_items:
+                            list1.append(item) # Tilføj til sidst (lavere rank)
+                            existing_items.add(item)
+                    
+                    comp1[category] = list1
                 
-                # Tving opdatering af tekstfeltet
+                merged_data["compatibility"] = comp1
+                
+                # Konverter tilbage til tekst for visning
+                final_json_text = json.dumps(merged_data, indent=2, ensure_ascii=False)
+
+                # Opdater UI
                 text_area_key = f"json_{st.session_state.form_key}"
-                st.session_state[text_area_key] = response.text
-                st.session_state.ai_result = response.text
+                st.session_state[text_area_key] = final_json_text
+                st.session_state.ai_result = final_json_text
                 
                 st.rerun()
                 
             except Exception as e:
                 st.error(f"AI Fejl: {str(e)}")
-                
-                st.warning("Debugging info:")
+                # Debugging info hvis det går galt
                 try:
                     models_iter = client.models.list()
                     model_names = [m.name for m in models_iter if "gemini" in m.name]
-                    st.code("\n".join(model_names))
+                    # st.code("\n".join(model_names)) # Udkommenteret for ikke at støje
                 except:
                     pass
 
