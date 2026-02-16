@@ -49,16 +49,13 @@ def load_image_from_url(url):
 def get_ai_feedback(outfit_items):
     """Sender billederne til Gemini for en 'Smagsdommer' vurdering."""
     
-    # 1. Find API Nøglen
     api_key = None
-    # Tjek Secrets (Cloud) eller lokal fil
     if "google_api_key" in st.secrets:
         api_key = st.secrets["google_api_key"]
     
     if not api_key:
-        return "⚠️ Mangler Google API Nøgle i Secrets. Tilføj 'google_api_key' i Streamlit Cloud."
+        return "⚠️ Mangler Google API Nøgle i Secrets."
 
-    # 2. Hent billederne
     images = []
     for item in outfit_items:
         img_url = item.get('image_path')
@@ -68,9 +65,8 @@ def get_ai_feedback(outfit_items):
                 images.append(img)
     
     if not images:
-        return "⚠️ Kunne ikke finde billeder af outfittet. Er de uploadet korrekt?"
+        return "⚠️ Kunne ikke finde billeder af outfittet."
 
-    # 3. Prompten (Smagsdommeren)
     system_instruction = """Du er en ærlig og direkte modeekspert med speciale i 'Modern Heritage' og klassisk herremode. Du foretrækker harmoni, jordfarver og tekstur.
 
 Din opgave:
@@ -83,15 +79,14 @@ Output format (Vær kort!):
    - Hvis justering: Hvad clasher? (Fx 'Skoene er for formelle til de bukser').
 3. LØSNINGEN (Kun ved fejl): Foreslå specifikt én ting der skal ændres (Fx 'Prøv et par brune støvler i stedet')."""
 
-    # 4. Kald API'et
     try:
         client = genai.Client(api_key=api_key)
         response = client.models.generate_content(
-            model="gemini-2.5-flash", # Flash er hurtig og god til dette
+            model="gemini-1.5-flash",
             contents=images,
             config={
                 "system_instruction": system_instruction,
-                "temperature": 0.5, # Lidt kreativitet til feedbacken
+                "temperature": 0.5,
             }
         )
         return response.text
@@ -100,9 +95,8 @@ Output format (Vær kort!):
 
 # --- VEJR FUNKTIONER ---
 
-@st.cache_data # <--- CACHE: Husker koordinater for evigt
+@st.cache_data
 def get_coordinates(city_name):
-    """Finder breddegrad/længdegrad for en by via OpenMeteo Geocoding."""
     try:
         url = f"https://geocoding-api.open-meteo.com/v1/search?name={city_name}&count=1&language=da&format=json"
         response = requests.get(url).json()
@@ -112,19 +106,14 @@ def get_coordinates(city_name):
         print(f"Koordinat-fejl: {e}")
     return None, None
 
-@st.cache_data(ttl=3600) # <--- CACHE: Husker rådata i 1 time
+@st.cache_data(ttl=3600)
 def fetch_weather_api_data(lat, lon):
-    """
-    Intern funktion der henter data fra API. 
-    Vi adskiller denne for at sikre, at vi kun cacher SUCCES.
-    """
     url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max&hourly=temperature_2m,apparent_temperature&forecast_days=1&timezone=auto"
     response = requests.get(url)
     response.raise_for_status() 
     return response.json()
 
 def get_weather_forecast(lat, lon):
-    """Behandler vejrdata og håndterer fejl uden at crashe appen."""
     try:
         data = fetch_weather_api_data(lat, lon)
         if 'daily' not in data: return None
@@ -158,8 +147,6 @@ def get_weather_forecast(lat, lon):
 # --- HISTORIK FUNKTIONER ---
 
 def save_outfit_to_history(outfit_items, weather_data, location):
-    """Gemmer dagens outfit og vejr i 'history' samlingen."""
-    
     outfit_summary = []
     for item in outfit_items:
         data = item['analysis']
@@ -183,7 +170,6 @@ def save_outfit_to_history(outfit_items, weather_data, location):
 
 @st.cache_data(ttl=600)
 def get_relevant_history(current_temp_max):
-    """Finder historik for dage der ligner i dag (+/- 3 grader)."""
     relevant_items = []
     try:
         docs = db.collection("history").stream()
@@ -201,35 +187,32 @@ def get_relevant_history(current_temp_max):
 
 def calculate_match_score(target_color, allowed_list):
     """
-    Beregner point for farve-match inklusiv familie-regler.
-    Returnerer score (lav er bedst) eller None (ingen match).
+    Beregner point for farve-match.
+    Returnerer en tuple: (score, is_synonym)
     """
     # 1. Direkte match (Score = Index i listen)
     if target_color in allowed_list:
-        return allowed_list.index(target_color)
+        return allowed_list.index(target_color), False
     
-    # 2. Synonym match (Score = 4 strafpoint)
-    # Definer "søskende" par
-    synonym = None
-    if target_color == "Hvid": synonym = "Creme"
-    elif target_color == "Creme": synonym = "Hvid"
-    elif target_color == "Navy": synonym = "Blå"
-    elif target_color == "Blå": synonym = "Navy"
-    elif target_color == "Grøn": synonym = "Oliven"
-    elif target_color == "Oliven": synonym = "Grøn"
-    elif target_color == "Rød": synonym = "Bordeaux"
-    elif target_color == "Bordeaux": synonym = "Rød"
+    # 2. Synonym match (Score = Søskende-farvens score + 4 strafpoint)
+    synonyms = {
+        "Hvid": "Creme", "Creme": "Hvid",
+        "Navy": "Blå", "Blå": "Navy",
+        "Grøn": "Oliven", "Oliven": "Grøn",
+        "Rød": "Bordeaux", "Bordeaux": "Rød"
+    }
     
-    if synonym and synonym in allowed_list:
-        return 4 # Fast straf for at bruge "nød-farven"
+    synonym_color = synonyms.get(target_color)
+    
+    if synonym_color and synonym_color in allowed_list:
+        # Find scoren for den tilladte søskende-farve
+        base_score = allowed_list.index(synonym_color)
+        # Tilføj 4 strafpoint
+        return base_score + 4, True
         
-    return None # Ingen match
+    return None, False # Ingen match
 
 def calculate_smart_score(item, color_score, weather_data, history_items):
-    """
-    Beregner den endelige sorterings-score.
-    Total = FarveScore + VejrStraf + HistorikBonus
-    """
     penalty = 0
     bonus = 0
     data = item['analysis']
@@ -316,13 +299,13 @@ def check_compatibility_basic(candidate, current_outfit):
         allowed_by_candidate = cand_data['compatibility'].get(sel_cat, [])
 
         # Brug den nye hjælpefunktion til at tjekke match (inkl. synonymer)
-        score1 = calculate_match_score(cand_color, allowed_by_selected)
-        score2 = calculate_match_score(sel_color, allowed_by_candidate)
+        score1, syn1 = calculate_match_score(cand_color, allowed_by_selected)
+        score2, syn2 = calculate_match_score(sel_color, allowed_by_candidate)
 
         if score1 is not None and score2 is not None:
             total_color_score += (score1 + score2)
-            # Tjek om vi brugte synonym-reglen (score på 4 eller derover betyder synonym)
-            if score1 >= 4 or score2 >= 4:
+            # Hvis en af parterne brugte et synonym for at få det til at lykkes, markerer vi det
+            if syn1 or syn2:
                 is_synonym_match = True
         else:
             is_valid = False
@@ -452,7 +435,6 @@ if not missing_cats:
 
 # GEM OUTFIT & BEDØM KNAPPER
 if st.session_state.outfit:
-    # Lav kolonner til knapperne
     btn_col1, btn_col2 = st.columns(2)
     
     with btn_col1:
