@@ -215,8 +215,6 @@ if uploaded_files:
     st.caption("Verificer data før du gemmer:")
     
     # --- RETTELSE: Undgå 'widget created with default value' advarsel ---
-    # Vi tjekker om nøglen findes i session state. Hvis ikke, sætter vi den til vores 'ai_result' (eller tom).
-    # Derefter fjerner vi 'value=' parameteren fra selve widgeten.
     widget_key = f"json_{st.session_state.form_key}"
     if widget_key not in st.session_state:
         st.session_state[widget_key] = st.session_state.ai_result
@@ -293,7 +291,8 @@ try:
     st.info(f"Antal stykker tøj i Cloud Database: **{count}**")
     
     if count > 0:
-        json_string = json.dumps(all_items, indent=2, ensure_ascii=False)
+        # RETTELSE: Vi bruger default=str til at håndtere Datetime objekter
+        json_string = json.dumps(all_items, indent=2, ensure_ascii=False, default=str)
         st.download_button(
             label="📥 Download hele databasen (JSON)",
             data=json_string,
