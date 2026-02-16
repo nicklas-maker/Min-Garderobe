@@ -38,8 +38,11 @@ if not firebase_admin._apps:
 
 db = firestore.client()
 
-# --- AI PROMPT (Opdateret med nye farver og regler) ---
-AI_PROMPT = """ANALYSE INSTRUKTION:
+# --- AI PROMPT (Nu som System Message med din nye Persona) ---
+AI_PROMPT = """ROLLE & PERSONA:
+Du er en ekspert i 'Modern Heritage' og klassisk herremode (ofte kaldet 'Grandpa Core' eller 'Ivy Style'). Du elsker tekstur, lag-på-lag, og jordfarver. Din stil er tidløs og hyggelig, men altid velklædt. Du foretrækker harmoni frem for vilde kontraster. Du er bosat i Danmark, men inspireres af steder som Wall Street og Norditalien, særligt i perioden imellem 1950'erne og 1980'erne.
+
+ANALYSE INSTRUKTION:
 
 
 Du skal analysere det vedhæftede billede af et stykke herretøj.
@@ -58,7 +61,7 @@ Din opgave er at returnere struktureret JSON data. Du må IKKE opfinde dine egne
 - Sæson: Vurder tøjets tykkelse/varme: [Sommer, Vinter, Helårs, Overgang]
 
 2. MATCHING REGLER (Kompatibilitet):
-Baseret på din viden om 'Heritage / Classic Menswear', lav lister over hvilke farver der passer til dette item. Inkludér både de sikre neutrale valg og karakteristiske accentfarver som Rød, så længe de overholder den tidløse æstetik.
+Baseret på din viden om 'Modern Heritage', lav lister over hvilke farver der passer til dette item. Inkludér både de sikre neutrale valg og karakteristiske accentfarver som Rød, så længe de overholder den tidløse æstetik.
 - VIGTIGT: Sorter listerne! De absolut bedste/sikreste matches skal stå FØRST. Men inkludér både klassiske neutrale farver og dybe accentfarver (som f.eks. Rød/Bordeaux), der komplementerer stilen.
 - Familie-regel: Hvis en farvefamilie generelt passer (f.eks. blå nuancer), så skriv BÅDE 'Blå' og 'Navy' på listen over matches, medmindre det er et specifikt clash.
 - Tone-i-Tone: Husk også at inkludere 'tone-i-tone' matches, men sørg for at anbefale kontrast i intensitet (f.eks. Mørk Top til Lyse Bukser).
@@ -132,27 +135,23 @@ if uploaded_files:
             
             try:
                 # Send billeder og prompt
-                # Vi bygger indholdslisten: [Prompt, Billede1, Billede2]
-                contents = [AI_PROMPT] + pil_images
-                
+                # NYT: Vi bruger 'system_instruction' til prompten og sender kun billeder i contents
                 response = client.models.generate_content(
                     model="gemini-2.5-pro",
-                    contents=contents,
+                    contents=pil_images, # User Message: Kun billederne
                     config={
                         "temperature": 0,
-                        "response_mime_type": "application/json"
+                        "response_mime_type": "application/json",
+                        "system_instruction": AI_PROMPT # System Message: Reglerne
                     }
                 )
                 
-                # --- VIGTIG RETTELSE: Tving opdatering af tekstfeltet ---
-                # Vi opdaterer session state direkte på feltets specifikke nøgle
+                # Tving opdatering af tekstfeltet
                 text_area_key = f"json_{st.session_state.form_key}"
                 st.session_state[text_area_key] = response.text
-                
-                # Gem også som backup
                 st.session_state.ai_result = response.text
                 
-                st.rerun() # Genindlæs for at vise teksten
+                st.rerun()
                 
             except Exception as e:
                 st.error(f"AI Fejl: {str(e)}")
@@ -197,7 +196,6 @@ if uploaded_files:
                     path_in_repo = f"img/{filename}"
                     
                     commit_message = f"Tilføjet {data.get('display_name', 'nyt tøj')}"
-                    # PyGithub kræver bytes eller string, getvalue() giver bytes
                     repo.create_file(path_in_repo, commit_message, main_file.getvalue())
                     
                     # C. Konstruer RAW URL
@@ -218,7 +216,7 @@ if uploaded_files:
                 # E. Reset
                 st.session_state.last_added = f"Gemt! {data.get('display_name', 'Tøjet')}"
                 st.session_state.form_key += 1 
-                st.session_state.ai_result = "" # Nulstil AI tekst
+                st.session_state.ai_result = "" 
                 st.rerun()
                 
             except json.JSONDecodeError as e:
