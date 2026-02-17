@@ -74,7 +74,7 @@ def get_ai_feedback(outfit_items):
     system_instruction = """Du er en ærlig og direkte modeekspert med speciale i 'Modern Heritage' og klassisk herremode. Du foretrækker harmoni, jordfarver og tekstur.
 
 Din opgave:
-Se på de vedhæftede billeder, som udgør ét samlet outfit.
+Se på de vedhæftede billeder, som udgør ét samlet outfit. Hvert billede repræsenterer det primære stykke tøj på billedet.
 
 Output format (Vær kort!):
 1. Start med DOMMEN: Enten '✅ Godkendt' eller '⚠️ Justering anbefales'.
@@ -164,9 +164,7 @@ def update_item_stats(item_id, current_avg_temp):
             old_count = data.get('usage_count', 0)
             old_avg = data.get('avg_temp', 0)
             
-            # Formel for løbende gennemsnit:
-            # Ny_Avg = ((Gammel_Avg * Gammel_Antal) + Ny_Værdi) / (Gammel_Antal + 1)
-            
+            # Formel for løbende gennemsnit
             if old_count == 0 or old_avg is None:
                 new_avg = current_avg_temp
             else:
@@ -179,6 +177,42 @@ def update_item_stats(item_id, current_avg_temp):
             })
     except Exception as e:
         print(f"Kunne ikke opdatere stats for {item_id}: {e}")
+
+def get_global_style_stats():
+    """Henter brugerens historiske gennemsnitlige stil-score."""
+    try:
+        doc = db.collection("stats").document("style_stats").get()
+        if doc.exists:
+            return doc.to_dict().get('average_score', 0.0)
+    except:
+        pass
+    return None
+
+def update_global_style_stats(new_score):
+    """Opdaterer den globale historiske stil-score."""
+    try:
+        doc_ref = db.collection("stats").document("style_stats")
+        doc = doc_ref.get()
+        
+        if doc.exists:
+            data = doc.to_dict()
+            old_avg = data.get('average_score', 0.0)
+            count = data.get('count', 0)
+            
+            # Samme vægtede gennemsnit som ved temperatur
+            new_avg = ((old_avg * count) + new_score) / (count + 1)
+            new_count = count + 1
+        else:
+            new_avg = new_score
+            new_count = 1
+            
+        doc_ref.set({
+            'average_score': new_avg,
+            'count': new_count,
+            'last_updated': firestore.SERVER_TIMESTAMP
+        })
+    except Exception as e:
+        print(f"Fejl ved opdatering af historisk score: {e}")
 
 def save_outfit_to_history(outfit_items, weather_data, location, style_score):
     # 1. Gem selve outfittet i historikken
@@ -196,12 +230,12 @@ def save_outfit_to_history(outfit_items, weather_data, location, style_score):
         "date": datetime.now(),
         "location": location,
         "weather": weather_data,
-        "style_score": style_score,  # GEMMER DEN NYE SCORE
+        "style_score": style_score,
         "outfit": outfit_summary
     }
     db.collection("history").add(doc_data)
     
-    # 2. Opdater statistikken på hvert stykke tøj
+    # 2. Opdater statistikken på hvert stykke tøj (Temperatur)
     current_avg_temp = weather_data.get('avg_feels_like_10h')
     if current_avg_temp is not None:
         for item in outfit_items:
@@ -461,9 +495,13 @@ if st.session_state.outfit:
     # Beregn Stil Score (Gennemsnit af farve-matches)
     style_score = calculate_outfit_style_score(st.session_state.outfit.values())
     
+    # Hent Historisk Score
+    hist_score = get_global_style_stats()
+    hist_text = f"Historisk Stil Score: {hist_score:.1f}" if hist_score is not None else "Historisk Stil Score: --"
+    
     st.markdown(f"""
     <div class="style-score-box">
-        <b>Stil Score: {style_score}</b>
+        <b>Dagens Stil Score: {style_score}</b> &nbsp;&nbsp;|&nbsp;&nbsp; {hist_text}
     </div>
     """, unsafe_allow_html=True)
 
@@ -482,11 +520,17 @@ if st.session_state.outfit:
         if st.button("✅ Gem & Bær", type="primary", use_container_width=True):
             if weather_data:
                 with st.spinner("Gemmer og opdaterer tøj-statistik..."):
-                    # Vi sender style_score med ned i databasen
+                    # Gemmer scoren i historikken
                     save_outfit_to_history(list(st.session_state.outfit.values()), weather_data, city, style_score)
+                    
+                    # Opdaterer den globale statistik
+                    update_global_style_stats(style_score)
+                    
                     # Ryd cache så de nye statistikker indlæses næste gang
                     load_wardrobe.clear()
+                    
                 st.toast(f"Gemt! Din score på {style_score} er nu en del af historikken.", icon="📈")
+                st.rerun() # Opdaterer siden så den nye historiske score vises
             else:
                 st.error("Kan ikke gemme uden vejrdata. Prøv at indtaste din by igen i sidebaren.")
 
