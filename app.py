@@ -475,7 +475,10 @@ if missing_cats:
                         label_text = f"{name}"
                         if is_synonym:
                             label_text += " ❗️"
-                        label_text += f"\n{shade_str}"
+                        
+                        # Formater Score: Vis som heltal hvis muligt (fx 1.0 -> 1), ellers med 1 decimal
+                        score_fmt = f"{smart_score:.0f}" if smart_score.is_integer() else f"{smart_score:.1f}"
+                        label_text += f"\n{shade_str} {score_fmt}"
                         
                         # --- IKON LOGIK ---
                         is_dead_end = False
