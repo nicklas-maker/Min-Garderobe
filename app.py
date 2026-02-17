@@ -180,8 +180,8 @@ def update_item_stats(item_id, current_avg_temp):
     except Exception as e:
         print(f"Kunne ikke opdatere stats for {item_id}: {e}")
 
-def save_outfit_to_history(outfit_items, weather_data, location):
-    # 1. Gem selve outfittet i historikken (som før)
+def save_outfit_to_history(outfit_items, weather_data, location, style_score):
+    # 1. Gem selve outfittet i historikken
     outfit_summary = []
     for item in outfit_items:
         data = item['analysis']
@@ -196,6 +196,7 @@ def save_outfit_to_history(outfit_items, weather_data, location):
         "date": datetime.now(),
         "location": location,
         "weather": weather_data,
+        "style_score": style_score,  # GEMMER DEN NYE SCORE
         "outfit": outfit_summary
     }
     db.collection("history").add(doc_data)
@@ -227,6 +228,41 @@ def calculate_match_score(target_color, allowed_list):
         
     return None, False
 
+def calculate_outfit_style_score(outfit_items):
+    """
+    Beregner den samlede stil-score for hele outfittet.
+    Summerer strafpoint for alle parvise matches (A vs B, A vs C, B vs C).
+    """
+    if len(outfit_items) < 2:
+        return 0
+    
+    total_score = 0
+    items_list = list(outfit_items)
+    
+    # Gennemgå alle unikke par
+    for i in range(len(items_list)):
+        for j in range(i + 1, len(items_list)):
+            item1 = items_list[i]
+            item2 = items_list[j]
+            
+            data1 = item1['analysis']
+            data2 = item2['analysis']
+            
+            # Tjek match begge veje
+            allowed1 = data1['compatibility'].get(data2['category'], [])
+            allowed2 = data2['compatibility'].get(data1['category'], [])
+            
+            score1, _ = calculate_match_score(data2['primary_color'], allowed1)
+            score2, _ = calculate_match_score(data1['primary_color'], allowed2)
+            
+            if score1 is not None and score2 is not None:
+                total_score += (score1 + score2)
+            else:
+                # Fallback hvis noget uventet sker (burde være fanget af logik tidligere)
+                total_score += 10 
+                
+    return total_score
+
 def calculate_smart_score(item, color_score, weather_data):
     """
     Ny logik:
@@ -244,9 +280,6 @@ def calculate_smart_score(item, color_score, weather_data):
         # Gang med din valgte faktor
         weather_penalty = diff * TEMP_PENALTY_FACTOR
     
-    # Hvis tøjet aldrig er brugt (item_avg er None), er straffen 0.
-    # Tvivlen kommer den anklagede til gode.
-
     total_score = color_score + weather_penalty
     return total_score, weather_penalty
 
@@ -330,6 +363,7 @@ st.markdown("""
     img { border-radius: 10px; }
     div[data-testid="stExpander"] { border: none; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
     .weather-box { background-color: #e8f4f8; padding: 10px; border-radius: 10px; margin-bottom: 20px; color: #333; }
+    .style-score-box { background-color: #fff9c4; padding: 15px; border-radius: 10px; margin: 20px 0; border-left: 5px solid #fbc02d; color: #444; }
     .data-badge { font-size: 0.8em; color: #666; background-color: #f0f2f6; padding: 2px 6px; border-radius: 4px; margin-top: 4px; display: inline-block; }
     @media (max-width: 768px) {
         div[data-testid="stImage"] img { width: 75% !important; margin-left: auto; margin-right: auto; display: block; }
@@ -415,8 +449,29 @@ if not missing_cats:
     st.balloons()
     st.success("🎉 Dit outfit er komplet!")
 
-# GEM OUTFIT & BEDØM KNAPPER
+# --- STYLE SCORE & KNAPPER ---
 if st.session_state.outfit:
+    # Beregn Stil Score (Kun Farver)
+    style_score = calculate_outfit_style_score(st.session_state.outfit.values())
+    
+    # Lav en lille vurdering tekst
+    score_text = f"**Stil Score: {style_score}**"
+    if style_score == 0:
+        desc = "✨ Perfekt Harmoni (Topklasse!)"
+    elif style_score <= 5:
+        desc = "👌 Godt sammensat"
+    elif style_score <= 10:
+        desc = "🎨 Høj kontrast / Eksperimenterende"
+    else:
+        desc = "⚠️ Muligvis disharmonisk"
+        
+    st.markdown(f"""
+    <div class="style-score-box">
+        {score_text} • {desc}<br>
+        <small>Dette tal er ren farve-matematik (Lavere er bedre). Vejr-match tælles ikke med her.</small>
+    </div>
+    """, unsafe_allow_html=True)
+
     btn_col1, btn_col2 = st.columns(2)
     
     with btn_col1:
@@ -432,10 +487,11 @@ if st.session_state.outfit:
         if st.button("✅ Gem & Bær", type="primary", use_container_width=True):
             if weather_data:
                 with st.spinner("Gemmer og opdaterer tøj-statistik..."):
-                    save_outfit_to_history(list(st.session_state.outfit.values()), weather_data, city)
+                    # Vi sender style_score med ned i databasen
+                    save_outfit_to_history(list(st.session_state.outfit.values()), weather_data, city, style_score)
                     # Ryd cache så de nye statistikker indlæses næste gang
                     load_wardrobe.clear()
-                st.toast("Outfit gemt! Statistik opdateret.", icon="📈")
+                st.toast(f"Gemt! Din score på {style_score} er nu en del af historikken.", icon="📈")
             else:
                 st.error("Kan ikke gemme uden vejrdata. Prøv at indtaste din by igen i sidebaren.")
 
