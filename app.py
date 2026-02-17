@@ -230,13 +230,14 @@ def calculate_match_score(target_color, allowed_list):
 
 def calculate_outfit_style_score(outfit_items):
     """
-    Beregner den samlede stil-score for hele outfittet.
-    Summerer strafpoint for alle parvise matches (A vs B, A vs C, B vs C).
+    Beregner den gennemsnitlige stil-score for hele outfittet.
+    Summerer strafpoint for alle parvise matches og dividerer med antal par.
     """
     if len(outfit_items) < 2:
-        return 0
+        return 0.0
     
     total_score = 0
+    pair_count = 0
     items_list = list(outfit_items)
     
     # Gennemgå alle unikke par
@@ -258,10 +259,16 @@ def calculate_outfit_style_score(outfit_items):
             if score1 is not None and score2 is not None:
                 total_score += (score1 + score2)
             else:
-                # Fallback hvis noget uventet sker (burde være fanget af logik tidligere)
+                # Fallback hvis noget uventet sker
                 total_score += 10 
+            
+            pair_count += 1
                 
-    return total_score
+    if pair_count == 0:
+        return 0.0
+        
+    # Returner gennemsnit (afrundet til 1 decimal)
+    return round(total_score / pair_count, 1)
 
 def calculate_smart_score(item, color_score, weather_data):
     """
@@ -451,24 +458,12 @@ if not missing_cats:
 
 # --- STYLE SCORE & KNAPPER ---
 if st.session_state.outfit:
-    # Beregn Stil Score (Kun Farver)
+    # Beregn Stil Score (Gennemsnit af farve-matches)
     style_score = calculate_outfit_style_score(st.session_state.outfit.values())
     
-    # Lav en lille vurdering tekst
-    score_text = f"**Stil Score: {style_score}**"
-    if style_score == 0:
-        desc = "✨ Perfekt Harmoni (Topklasse!)"
-    elif style_score <= 5:
-        desc = "👌 Godt sammensat"
-    elif style_score <= 10:
-        desc = "🎨 Høj kontrast / Eksperimenterende"
-    else:
-        desc = "⚠️ Muligvis disharmonisk"
-        
     st.markdown(f"""
     <div class="style-score-box">
-        {score_text} • {desc}<br>
-        <small>Dette tal er ren farve-matematik (Lavere er bedre). Vejr-match tælles ikke med her.</small>
+        <b>Stil Score: {style_score}</b>
     </div>
     """, unsafe_allow_html=True)
 
