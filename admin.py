@@ -38,7 +38,7 @@ if not firebase_admin._apps:
 
 db = firestore.client()
 
-# --- AI PROMPT (Nu som System Message med din nye Persona) ---
+# --- AI PROMPT (Base / Junior Stylist) ---
 AI_PROMPT = """ROLLE & PERSONA:
 Du er en ekspert i 'Modern Heritage' og klassisk herremode (ofte kaldet 'Grandpa Core' eller 'Ivy Style'). Du elsker tekstur, lag-på-lag, og jordfarver. Din stil er tidløs og hyggelig, men altid velklædt. Du foretrækker harmoni frem for vilde kontraster. Du er bosat i Danmark, men inspireres af steder som Wall Street og Norditalien, særligt i perioden imellem 1950'erne og 1980'erne.
 
@@ -52,7 +52,6 @@ Din opgave er at identificere og analysere KUN DEN PRIMÆRE GENSTAND.
 - Ignorer krop: Se bort fra modellens hud, hår og positur.
 - Hvis du er i tvivl, vælg den genstand der udgør den største del af billedet.
 
-[VALGFRIT: Skriv evt. "Dette er overtøj" eller "Dette er en top" her for at hjælpe mig, hvis det er tvetydigt]
 
 Du skal analysere det vedhæftede billede af et stykke herretøj.
 Din opgave er at returnere struktureret JSON data. Du må IKKE opfinde dine egne værdier til de faste felter - du SKAL vælge fra listerne herunder.
@@ -66,8 +65,6 @@ Din opgave er at returnere struktureret JSON data. Du må IKKE opfinde dine egne
 - Intensitet (Shade): [Lys, Mellem, Mørk]
 - Sekundær Farve: Hvis ingen tydelig, skriv "Ingen". Ellers vælg fra samme liste.
 - Mønster: [Solid, Struktur, Mønster]
-- Materiale: Vælg det primære materiale: [Bomuld, Uld, Hør, Silke, Læder, Ruskind, Denim, Syntetisk, Canvas]
-- Sæson: Vurder tøjets tykkelse/varme: [Sommer, Vinter, Helårs, Overgang]
 
 2. MATCHING REGLER (Kompatibilitet):
 Baseret på din viden om 'Modern Heritage', lav lister over hvilke farver der passer til dette item. Inkludér både de sikre neutrale valg og karakteristiske accentfarver som Rød, så længe de overholder den tidløse æstetik.
@@ -85,8 +82,6 @@ Baseret på din viden om 'Modern Heritage', lav lister over hvilke farver der pa
   "shade": "String",
   "secondary_color": "String",
   "pattern": "String",
-  "material": "String",
-  "season": "String",
   "compatibility": {
     "Top": ["Farve1", "Farve2"...],      // (Hvis item er Bund/Sko/Strømper/Overtøj)
     "Bund": ["Farve1", "Farve2"...],     // (Hvis item er Top/Sko/Strømper/Overtøj)
@@ -137,17 +132,15 @@ if uploaded_files:
     # 2. AI ANALYSE KNAP
     st.subheader("2. Analyser med AI")
     
-    if st.button("✨ Analyser (2x Ensemble)", type="secondary"):
-        with st.spinner("Kører dobbelt-analyse for at fange alle matches..."):
-            # Opsætning af klienten
+    if st.button("✨ Analyser (Junior + Senior)", type="secondary"):
+        with st.spinner("1/2: Junior Stylist analyserer billedet..."):
             client = genai.Client(api_key=GOOGLE_API_KEY)
             
             try:
-                # --- KØRSEL 1: Den strenge (Base) ---
-                # Temp 0 for maksimal præcision
+                # --- KØRSEL 1: Junior (Base Analyse) ---
                 response1 = client.models.generate_content(
                     model="gemini-2.5-pro",
-                    contents=pil_images, # User Message: Kun billederne
+                    contents=pil_images, 
                     config={
                         "temperature": 0,
                         "response_mime_type": "application/json",
@@ -155,43 +148,89 @@ if uploaded_files:
                     }
                 )
                 data1 = json.loads(response1.text)
+                json_str_1 = json.dumps(data1, ensure_ascii=False, indent=2)
 
-                # --- KØRSEL 2: Den kreative (Supplement) ---
-                # Temp 0.4 for at finde alternativer vi måske missede
+                # --- KØRSEL 2: Senior (Korrektur & Supplement) ---
+                # Vi bygger prompten dynamisk baseret på outputtet fra Kørsel 1
+                review_prompt = f"""
+                ANALYSE INSTRUKTION:
+
+                FOKUS PÅ HOVEDGENSTANDEN:
+                Billedet viser ofte en model, der bærer flere stykker tøj (f.eks. bukser sammen med sko og trøje).
+                Din opgave er at identificere og analysere KUN DEN PRIMÆRE GENSTAND.
+                - Identificer fokus: Hvilken genstand er central, fylder mest eller er tydeligst belyst?
+                - Ignorer kontekst: Hvis billedet fokuserer på bukser, skal du fuldstændig ignorere skoene og overdelen modellen har på.
+                - Ignorer krop: Se bort fra modellens hud, hår og positur.
+                - Hvis du er i tvivl, vælg den genstand der udgør den største del af billedet.
+
+                ROLLE:
+                Du agerer nu som 'Senior Stylist', der læser korrektur på en analyse lavet af en junior. Du er en ekspert i 'Modern Heritage' og klassisk herremode (ofte kaldet 'Grandpa Core' eller 'Ivy Style'). Du elsker tekstur, lag-på-lag, og jordfarver. Din stil er tidløs og hyggelig, men altid velklædt. Du foretrækker harmoni frem for vilde kontraster. Du er bosat i Danmark, men inspireres af steder som Wall Street og Norditalien, særligt i perioden imellem 1950'erne og 1980'erne.
+                
+                Din opgave er primært at gennemgå 'compatibility' listerne i nedenstående JSON data.
+                Du skal IKKE ændre på identifikation (Display Navn, Type, Farve, Intensitet, Mønster) medmindre det er åbenlyst forkert.
+                
+                INPUT DATA (Fra Junior):
+                {json_str_1}
+                
+                INSTRUKTION:
+                1. Kig på farverne i 'compatibility' sektionen for hver kategori.
+                2. Er der klassiske 'Modern Heritage' farver, der mangler? Vælg kun ud fra listen [Sort, Hvid, Creme, Grå, Navy, Blå, Beige, Brun, Grøn, Oliven, Rød, Bordeaux, Accent]
+                3. Tilføj dem KUN hvis det er et sikkert stil-match.
+                4. Nye farver skal tilføjes i bunden af listerne.
+                
+                OUTPUT:
+                Returner den komplette, opdaterede JSON struktur.
+                """
+
+                # st.write("Kører Senior Review...") # (Debug info)
+                
                 response2 = client.models.generate_content(
                     model="gemini-2.5-pro",
-                    contents=pil_images,
+                    contents=pil_images, # Senior ser også billederne
                     config={
-                        "temperature": 0.2,
+                        "temperature": 0.2, # Lidt mere kreativitet tilladt til at finde ekstra matches
                         "response_mime_type": "application/json",
-                        "system_instruction": AI_PROMPT
+                        "system_instruction": review_prompt
                     }
                 )
                 data2 = json.loads(response2.text)
 
-                # --- FLETNING (Ensemble Logic) ---
-                # Vi starter med data1 som fundament
-                merged_data = data1.copy()
+                # --- FLETNING (Sikkerhedsnet) ---
+                # Vi bruger data2 (Senior) som base, men sikrer at vi ikke har mistet noget fra data1 ved en fejl
+                merged_data = data1.copy() # Start med Junior (Sikker base for stamdata)
+                
+                # Men brug Seniors compatibility lister som primær kilde, da de burde være en udvidet version
                 comp1 = merged_data.get("compatibility", {})
                 comp2 = data2.get("compatibility", {})
 
-                # Gennemgå alle kategorier og flet listerne
+                # Gennemgå alle kategorier og flet smart
                 for category in ["Top", "Bund", "Sko", "Strømper", "Overtøj"]:
-                    list1 = comp1.get(category, [])
-                    list2 = comp2.get(category, [])
+                    list1 = comp1.get(category, []) # Juniors liste
+                    list2 = comp2.get(category, []) # Seniors liste (Bør indeholde Junior + Nye)
                     
-                    # Bevar rækkefølgen fra list1, men tilføj NYE ting fra list2 i bunden
-                    existing_items = set(list1)
+                    # Vi stoler på at Senior har gjort sit arbejde og inkluderet de gamle + nye.
+                    # Men for en sikkerheds skyld:
+                    # Vi tager Juniors liste først (for at bevare top-ranking), og tilføjer derefter unikke ting fra Senior.
+                    
+                    final_list = list(list1)
+                    existing = set(list1)
+                    
                     for item in list2:
-                        if item not in existing_items:
-                            list1.append(item) # Tilføj til sidst (lavere rank)
-                            existing_items.add(item)
-                    
-                    comp1[category] = list1
+                        if item not in existing:
+                            final_list.append(item)
+                            existing.add(item)
+                            
+                    comp1[category] = final_list
                 
                 merged_data["compatibility"] = comp1
                 
-                # Konverter tilbage til tekst for visning
+                # Brug Seniors display_name hvis det er rettet, ellers behold Juniors
+                if data2.get("display_name") and data2.get("display_name") != data1.get("display_name"):
+                     # Vi beholder Juniors navn som standard jf. din instruks om ikke at fokusere på det, 
+                     # medmindre Senior insisterer. Her vælger jeg at beholde Juniors data1 for stamdata 
+                     # for at overholde "Den skal ikke bruge fokus på at finde ting som Display Navn..."
+                     pass 
+
                 final_json_text = json.dumps(merged_data, indent=2, ensure_ascii=False)
 
                 # Opdater UI
@@ -203,11 +242,9 @@ if uploaded_files:
                 
             except Exception as e:
                 st.error(f"AI Fejl: {str(e)}")
-                # Debugging info hvis det går galt
                 try:
                     models_iter = client.models.list()
-                    model_names = [m.name for m in models_iter if "gemini" in m.name]
-                    # st.code("\n".join(model_names)) # Udkommenteret for ikke at støje
+                    # Debug code removed
                 except:
                     pass
 
