@@ -164,12 +164,12 @@ if uploaded_files:
                 - Hvis du er i tvivl, vælg den genstand der udgør den største del af billedet.
 
                 ROLLE:
-                Du agerer nu som 'Senior Stylist', der læser korrektur på en analyse lavet af en junior. Du er en ekspert i 'Modern Heritage' og klassisk herremode (ofte kaldet 'Grandpa Core' eller 'Ivy Style'). Du elsker tekstur, lag-på-lag, og jordfarver. Din stil er tidløs og hyggelig, men altid velklædt. Du foretrækker harmoni frem for vilde kontraster. Du er bosat i Danmark, men inspireres af steder som Wall Street og Norditalien, særligt i perioden imellem 1950'erne og 1980'erne.
+                Du agerer nu som 'Senior Stylist', der læser korrektur på en analyse lavet af en kollega. Du er en ekspert i 'Modern Heritage' og klassisk herremode (ofte kaldet 'Grandpa Core' eller 'Ivy Style'). Du elsker tekstur, lag-på-lag, og jordfarver. Din stil er tidløs og hyggelig, men altid velklædt. Du foretrækker harmoni frem for vilde kontraster. Du er bosat i Danmark, men inspireres af steder som Wall Street og Norditalien, særligt i perioden imellem 1950'erne og 1980'erne.
                 
                 Din opgave er primært at gennemgå 'compatibility' listerne i nedenstående JSON data.
                 Du skal IKKE ændre på identifikation (Display Navn, Type, Farve, Intensitet, Mønster) medmindre det er åbenlyst forkert.
                 
-                INPUT DATA (Fra Junior):
+                INPUT DATA (Fra kollega):
                 {json_str_1}
                 
                 INSTRUKTION:
