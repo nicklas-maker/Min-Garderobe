@@ -509,17 +509,17 @@ with st.sidebar:
 
     # --- IKON ORDBOG ---
     st.markdown("---")
-    with st.expander("📖 Ikon Ordbog", expanded=False):
+    with st.expander("📖 Ikoner", expanded=False):
         st.markdown("""
         <small>
-        ⭐ : Perfekt farvematch<br>
-        1️⃣ : Godt match<br>
-        2️⃣ : Acceptabelt match<br>
-        3️⃣ : Høj kontrast<br>
-        ⚠️ : Blindgyde (Mangler dele)<br>
-        ❗️ : Synonym farve (fx Creme/Hvid)<br>
-        ✅ : Godkendt af Stylist før<br>
-        ❌ : Afvist af Stylist før
+        ⭐ : Perfekt<br>
+        1️⃣ : Godt<br>
+        2️⃣ : Fint<br>
+        3️⃣ : Acceptabelt<br>
+        ⚠️ : Blindgyde<br>
+        ❗️ : Synonym farve<br>
+        ✅ : Godkendt af Stylist<br>
+        ❌ : Afvist af Stylist
         </small>
         """, unsafe_allow_html=True)
 
@@ -600,10 +600,10 @@ if st.session_state.outfit:
     # 5. Vis tidligere kommentar hvis fundet
     if is_approved_before:
         saved_comment = approved_cache[current_outfit_id]
-        st.success(f"**Tidligere Stylist Bedømmelse (Godkendt):**\n\n{saved_comment}")
+        st.success(f"**Tidligere Bedømmelse (Godkendt):**\n\n{saved_comment}")
     elif is_rejected_before:
         saved_comment = rejected_cache[current_outfit_id]
-        st.warning(f"**Tidligere Stylist Bedømmelse (Ikke Godkendt):**\n\n{saved_comment}")
+        st.warning(f"**Tidligere Bedømmelse (Ikke Godkendt🤔):**\n\n{saved_comment}")
 
     btn_col1, btn_col2 = st.columns(2)
     
