@@ -272,14 +272,26 @@ def save_rejected_outfit(outfit_items, comment):
 
 @st.cache_data(ttl=600)
 def load_outfit_feedback_cache():
-    """Indlæser både godkendte og afviste outfits til to dictionaries."""
+    """
+    Indlæser godkendte og afviste outfits.
+    Returnerer:
+    1. approved (dict): ID_str -> Comment
+    2. rejected (dict): ID_str -> Comment
+    3. approved_sets (list of sets): Liste med godkendte ID-kombinationer som sets for subset-matching
+    """
     approved = {}
     rejected = {}
+    approved_sets = []
+    
     try:
         # Hent Godkendte
         docs_app = db.collection("approved_outfits").stream()
         for doc in docs_app:
             approved[doc.id] = doc.to_dict().get('comment', '')
+            if doc.id:
+                # Omdan ID string (id1_id2) til et set {id1, id2}
+                ids = set(doc.id.split('_'))
+                approved_sets.append(ids)
             
         # Hent Afviste
         docs_rej = db.collection("rejected_outfits").stream()
@@ -287,7 +299,7 @@ def load_outfit_feedback_cache():
             rejected[doc.id] = doc.to_dict().get('comment', '')
     except:
         pass
-    return approved, rejected
+    return approved, rejected, approved_sets
 
 # --- SMART SCORE LOGIK ---
 
@@ -536,7 +548,7 @@ if not missing_cats:
 # --- STYLE SCORE & KNAPPER ---
 if st.session_state.outfit:
     # 1. Hent Hukommelse (Godkendte og Afviste outfits)
-    approved_cache, rejected_cache = load_outfit_feedback_cache()
+    approved_cache, rejected_cache, _ = load_outfit_feedback_cache() # Ignore sets here
     current_outfit_id = get_outfit_id(st.session_state.outfit.values())
     
     is_approved_before = current_outfit_id in approved_cache
@@ -613,6 +625,9 @@ if missing_cats:
     st.subheader("Vælg næste del:")
     tabs = st.tabs([CATEGORY_LABELS[c] for c in missing_cats])
     
+    # Pre-load cache for knapperne
+    approved_cache, rejected_cache, approved_sets = load_outfit_feedback_cache()
+    
     for i, cat in enumerate(missing_cats):
         with tabs[i]:
             all_items = get_items_by_category(wardrobe, cat)
@@ -646,7 +661,7 @@ if missing_cats:
                         if is_synonym:
                             label_text += " ❗️"
                         
-                        # Formater Score: Vis som heltal hvis muligt (fx 1.0 -> 1), ellers med 1 decimal
+                        # Formater Score
                         score_fmt = f"{smart_score:.0f}" if smart_score.is_integer() else f"{smart_score:.1f}"
                         label_text += f"\n{shade_str} {score_fmt}"
                         
@@ -657,18 +672,41 @@ if missing_cats:
                         
                         icon_prefix = ""
                         
+                        # 1. Tjek Historik (Guidance/Advarsel)
+                        current_ids = [i['id'] for i in current_selection_list]
+                        candidate_set = set(current_ids + [item['id']])
+                        
+                        # A. Godkendt (Guidance - Subset)
+                        is_part_of_success = False
+                        for a_set in approved_sets:
+                            if candidate_set.issubset(a_set):
+                                is_part_of_success = True
+                                break
+                        
+                        # B. Afvist (Advarsel - Exact Match)
+                        cand_id_list = sorted(list(candidate_set))
+                        cand_id_str = "_".join(cand_id_list)
+                        is_rejected_exact = cand_id_str in rejected_cache
+                        
+                        # C. Blindgyde (Dead end)
                         if is_dead_end:
                             icon_prefix += "⚠️ "
                         
-                        # Tier Ikoner (Baseret udelukkende på farve-score)
+                        # D. Historik Ikoner
+                        if is_part_of_success:
+                            icon_prefix += "✅ "
+                        elif is_rejected_exact:
+                            icon_prefix += "❌ "
+                        
+                        # E. Tier Ikoner (Farve)
                         if color_score == 0: 
-                            icon_prefix += "⭐ "      # Perfekt match
+                            icon_prefix += "⭐ "      
                         elif color_score == 1: 
-                            icon_prefix += "1️⃣ "     # Godt match
+                            icon_prefix += "1️⃣ "     
                         elif 2 <= color_score <= 3: 
-                            icon_prefix += "2️⃣ "     # Acceptabelt match
+                            icon_prefix += "2️⃣ "     
                         elif 4 <= color_score <= 5: 
-                            icon_prefix += "3️⃣ "     # Matcher, men med stor kontrast/synonym straf
+                            icon_prefix += "3️⃣ "     
                         
                         label_text = icon_prefix + label_text
                         
