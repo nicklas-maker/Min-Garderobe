@@ -712,9 +712,8 @@ if missing_cats:
                         if is_synonym:
                             label_text += " ❗️"
                         
-                        # Formater Score
-                        score_fmt = f"{smart_score:.0f}" if smart_score.is_integer() else f"{smart_score:.1f}"
-                        label_text += f"\n{shade_str} {score_fmt}"
+                        # VISNING: Kun color_score (men sorteret efter smart_score)
+                        label_text += f"\n{shade_str} {color_score}"
                         
                         # --- IKON LOGIK ---
                         
