@@ -23,6 +23,9 @@ CATEGORY_LABELS = {
 # Formel: abs(dagens_temp - tøjets_gns) * FACTOR
 TEMP_PENALTY_FACTOR = 0.5 
 
+# Bonus for at være del af et tidligere godkendt outfit (trækkes fra scoren)
+SUCCESS_BONUS = 2
+
 # --- FIREBASE INIT ---
 if not firebase_admin._apps:
     if os.path.exists("firestore_key.json"):
@@ -634,13 +637,35 @@ if missing_cats:
             valid_items_with_score = []
             current_selection_list = list(st.session_state.outfit.values())
             
-            # 1. Kør Farve-Matematik
+            # Forbered nuværende IDs til sammenligning
+            current_ids = [item['id'] for item in current_selection_list]
+
+            # 1. Kør Farve-Matematik & Score
             for item in all_items:
                 is_valid, color_score, is_synonym = check_compatibility_basic(item, current_selection_list)
                 if is_valid:
                     # 2. Kør SMART SCORE (Temperatur)
                     smart_score, weather_penalty = calculate_smart_score(item, color_score, weather_data)
-                    valid_items_with_score.append((smart_score, item, color_score, weather_penalty, is_synonym))
+                    
+                    # 3. Kør SUCCESS BONUS (Tjek Historik)
+                    candidate_set = set(current_ids + [item['id']])
+                    
+                    # Tjek om det er en del af en succes
+                    is_part_of_success = False
+                    for a_set in approved_sets:
+                        if candidate_set.issubset(a_set):
+                            is_part_of_success = True
+                            break
+                    
+                    if is_part_of_success:
+                        smart_score -= SUCCESS_BONUS # Trækker 2 fra scoren
+                    
+                    # Tjek for Exact Rejection (Kun til visning, ikke score-straf)
+                    cand_id_list = sorted(list(candidate_set))
+                    cand_id_str = "_".join(cand_id_list)
+                    is_rejected_exact = cand_id_str in rejected_cache
+
+                    valid_items_with_score.append((smart_score, item, color_score, weather_penalty, is_synonym, is_part_of_success, is_rejected_exact))
             
             # Sorter efter Smart Score (lavest er bedst)
             valid_items_with_score.sort(key=lambda x: x[0])
@@ -649,7 +674,7 @@ if missing_cats:
                 st.error(f"Ingen {CATEGORY_LABELS[cat].lower()} matcher farvevalget!")
             else:
                 img_cols = st.columns(3)
-                for idx, (smart_score, item, color_score, penalty, is_synonym) in enumerate(valid_items_with_score):
+                for idx, (smart_score, item, color_score, penalty, is_synonym, is_part_of_success, is_rejected_exact) in enumerate(valid_items_with_score):
                     col = img_cols[idx % 3]
                     with col:
                         st.image(item['image_path'], use_container_width=True)
@@ -671,22 +696,6 @@ if missing_cats:
                             is_dead_end = check_dead_end(item, current_selection_list, wardrobe)
                         
                         icon_prefix = ""
-                        
-                        # 1. Tjek Historik (Guidance/Advarsel)
-                        current_ids = [i['id'] for i in current_selection_list]
-                        candidate_set = set(current_ids + [item['id']])
-                        
-                        # A. Godkendt (Guidance - Subset)
-                        is_part_of_success = False
-                        for a_set in approved_sets:
-                            if candidate_set.issubset(a_set):
-                                is_part_of_success = True
-                                break
-                        
-                        # B. Afvist (Advarsel - Exact Match)
-                        cand_id_list = sorted(list(candidate_set))
-                        cand_id_str = "_".join(cand_id_list)
-                        is_rejected_exact = cand_id_str in rejected_cache
                         
                         # C. Blindgyde (Dead end)
                         if is_dead_end:
