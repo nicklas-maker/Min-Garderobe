@@ -26,6 +26,9 @@ TEMP_PENALTY_FACTOR = 0.5
 # Bonus for at være del af et tidligere godkendt outfit (trækkes fra scoren)
 SUCCESS_BONUS = 2
 
+# Straf for at genskabe et tidligere AFVIST outfit (lægges til scoren)
+REJECTION_PENALTY = 10
+
 # --- FIREBASE INIT ---
 if not firebase_admin._apps:
     if os.path.exists("firestore_key.json"):
@@ -675,12 +678,20 @@ if missing_cats:
                     if is_part_of_success:
                         smart_score -= SUCCESS_BONUS # Trækker 2 fra scoren
                     
-                    # Tjek for Exact Rejection (Kun til visning, ikke score-straf)
+                    # Tjek for Exact Rejection (Nu med score-straf)
                     cand_id_list = sorted(list(candidate_set))
                     cand_id_str = "_".join(cand_id_list)
                     is_rejected_exact = cand_id_str in rejected_cache
+                    
+                    if is_rejected_exact:
+                        smart_score += REJECTION_PENALTY
 
-                    valid_items_with_score.append((smart_score, item, color_score, weather_penalty, is_synonym, is_part_of_success, is_rejected_exact))
+                    # 4. Kør DEAD END CHECK (Blindgyde)
+                    is_dead_end = False
+                    if st.session_state.outfit:
+                        is_dead_end = check_dead_end(item, current_selection_list, wardrobe)
+                    
+                    valid_items_with_score.append((smart_score, item, color_score, weather_penalty, is_synonym, is_part_of_success, is_rejected_exact, is_dead_end))
             
             # Sorter efter Smart Score (lavest er bedst)
             valid_items_with_score.sort(key=lambda x: x[0])
@@ -689,7 +700,7 @@ if missing_cats:
                 st.error(f"Ingen {CATEGORY_LABELS[cat].lower()} matcher farvevalget!")
             else:
                 img_cols = st.columns(3)
-                for idx, (smart_score, item, color_score, penalty, is_synonym, is_part_of_success, is_rejected_exact) in enumerate(valid_items_with_score):
+                for idx, (smart_score, item, color_score, penalty, is_synonym, is_part_of_success, is_rejected_exact, is_dead_end) in enumerate(valid_items_with_score):
                     col = img_cols[idx % 3]
                     with col:
                         st.image(item['image_path'], use_container_width=True)
@@ -706,9 +717,6 @@ if missing_cats:
                         label_text += f"\n{shade_str} {score_fmt}"
                         
                         # --- IKON LOGIK ---
-                        is_dead_end = False
-                        if st.session_state.outfit:
-                            is_dead_end = check_dead_end(item, current_selection_list, wardrobe)
                         
                         icon_prefix = ""
                         
