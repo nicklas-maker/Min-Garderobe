@@ -712,8 +712,10 @@ if missing_cats:
                         if is_synonym:
                             label_text += " ❗️"
                         
-                        # VISNING: Kun color_score (men sorteret efter smart_score)
-                        label_text += f"\n{shade_str} {color_score}"
+                        # VISNING: Vis gennemsnit for at kunne sammenligne med Style Score
+                        num_existing = len(current_selection_list)
+                        avg_display = color_score / num_existing if num_existing > 0 else 0.0
+                        label_text += f"\n{shade_str} {avg_display:.1f}"
                         
                         # --- IKON LOGIK ---
                         
