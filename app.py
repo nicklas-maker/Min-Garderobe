@@ -504,6 +504,22 @@ with st.sidebar:
     else:
         st.warning("Kunne ikke finde byen.")
 
+    # --- IKON ORDBOG ---
+    st.markdown("---")
+    with st.expander("📖 Ikon Ordbog", expanded=False):
+        st.markdown("""
+        <small>
+        ⭐ : Perfekt farvematch<br>
+        1️⃣ : Godt match<br>
+        2️⃣ : Acceptabelt match<br>
+        3️⃣ : Høj kontrast<br>
+        ⚠️ : Blindgyde (Mangler dele)<br>
+        ❗️ : Synonym farve (fx Creme/Hvid)<br>
+        ✅ : Godkendt af Stylist før<br>
+        ❌ : Afvist af Stylist før
+        </small>
+        """, unsafe_allow_html=True)
+
 st.title("Dagens Outfit")
 
 # Hent garderobe
@@ -545,7 +561,6 @@ st.divider()
 missing_cats = [c for c in CATEGORIES if c not in st.session_state.outfit]
 
 if not missing_cats:
-    st.balloons()
     st.success("🎉 Dit outfit er komplet!")
 
 # --- STYLE SCORE & KNAPPER ---
