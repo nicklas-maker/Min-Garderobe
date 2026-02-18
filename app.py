@@ -241,6 +241,37 @@ def save_outfit_to_history(outfit_items, weather_data, location, style_score):
         for item in outfit_items:
             update_item_stats(item['id'], current_avg_temp)
 
+# --- NEW: APPROVED OUTFITS MEMORY ---
+
+def get_outfit_id(outfit_items):
+    """Laver et unikt ID for en kombination af tøj (uanset rækkefølge)."""
+    ids = sorted([item['id'] for item in outfit_items])
+    return "_".join(ids)
+
+def save_approved_outfit(outfit_items, comment):
+    """Gemmer et godkendt outfit i databasen."""
+    try:
+        oid = get_outfit_id(outfit_items)
+        db.collection("approved_outfits").document(oid).set({
+            "comment": comment,
+            "timestamp": firestore.SERVER_TIMESTAMP
+        })
+    except Exception as e:
+        print(f"Fejl ved gemning af godkendt outfit: {e}")
+
+@st.cache_data(ttl=600)
+def load_approved_cache():
+    """Indlæser alle godkendte outfits til en dictionary {id: comment}."""
+    data = {}
+    try:
+        docs = db.collection("approved_outfits").stream()
+        for doc in docs:
+            d = doc.to_dict()
+            data[doc.id] = d.get('comment', '')
+    except:
+        pass
+    return data
+
 # --- SMART SCORE LOGIK ---
 
 def calculate_match_score(target_color, allowed_list):
@@ -265,7 +296,6 @@ def calculate_match_score(target_color, allowed_list):
 def calculate_outfit_style_score(outfit_items):
     """
     Beregner den gennemsnitlige stil-score for hele outfittet.
-    Summerer strafpoint for alle parvise matches og dividerer med antal par.
     """
     if len(outfit_items) < 2:
         return 0.0
@@ -293,7 +323,6 @@ def calculate_outfit_style_score(outfit_items):
             if score1 is not None and score2 is not None:
                 total_score += (score1 + score2)
             else:
-                # Fallback hvis noget uventet sker
                 total_score += 10 
             
             pair_count += 1
@@ -301,7 +330,6 @@ def calculate_outfit_style_score(outfit_items):
     if pair_count == 0:
         return 0.0
         
-    # Returner gennemsnit (afrundet til 1 decimal)
     return round(total_score / pair_count, 1)
 
 def calculate_smart_score(item, color_score, weather_data):
@@ -316,9 +344,7 @@ def calculate_smart_score(item, color_score, weather_data):
     current_avg = weather_data.get('avg_feels_like_10h')
     
     if item_avg is not None and current_avg is not None:
-        # Beregn forskel
         diff = abs(current_avg - item_avg)
-        # Gang med din valgte faktor
         weather_penalty = diff * TEMP_PENALTY_FACTOR
     
     total_score = color_score + weather_penalty
@@ -492,18 +518,34 @@ if not missing_cats:
 
 # --- STYLE SCORE & KNAPPER ---
 if st.session_state.outfit:
-    # Beregn Stil Score (Gennemsnit af farve-matches)
+    # 1. Hent Hukommelse (Godkendte outfits)
+    approved_cache = load_approved_cache()
+    current_outfit_id = get_outfit_id(st.session_state.outfit.values())
+    is_approved_before = current_outfit_id in approved_cache
+    
+    # 2. Beregn Stil Score (Gennemsnit af farve-matches)
     style_score = calculate_outfit_style_score(st.session_state.outfit.values())
     
-    # Hent Historisk Score
+    # 3. Hent Historisk Score
     hist_score = get_global_style_stats()
     hist_text = f"Historisk Stil Score: {hist_score:.1f}" if hist_score is not None else "Historisk Stil Score: --"
     
+    # 4. Konstruer Score Tekst
+    score_display = f"<b>Dagens Stil Score: {style_score}</b>"
+    if is_approved_before:
+        score_display += " ✅"
+    score_display += f" &nbsp;&nbsp;|&nbsp;&nbsp; {hist_text}"
+    
     st.markdown(f"""
     <div class="style-score-box">
-        <b>Dagens Stil Score: {style_score}</b> &nbsp;&nbsp;|&nbsp;&nbsp; {hist_text}
+        {score_display}
     </div>
     """, unsafe_allow_html=True)
+
+    # 5. Vis tidligere kommentar hvis godkendt før
+    if is_approved_before:
+        saved_comment = approved_cache[current_outfit_id]
+        st.success(f"**Tidligere Stylist Bedømmelse:**\n\n{saved_comment}")
 
     btn_col1, btn_col2 = st.columns(2)
     
@@ -511,8 +553,12 @@ if st.session_state.outfit:
         if st.button("🔮 Bedøm Outfit", type="secondary", use_container_width=True):
             with st.spinner("Stylisten kigger på dit tøj..."):
                 feedback = get_ai_feedback(list(st.session_state.outfit.values()))
+                
                 if "✅" in feedback:
                     st.success(feedback)
+                    # GEMMER AUTOMATISK I DATABASE
+                    save_approved_outfit(list(st.session_state.outfit.values()), feedback)
+                    load_approved_cache.clear() # Rydder cache så ✅ vises med det samme ved rerun
                 else:
                     st.info(feedback)
 
