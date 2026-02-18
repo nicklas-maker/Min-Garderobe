@@ -547,4 +547,148 @@ if st.session_state.outfit:
     
     # 3. Hent Historisk Score
     hist_score = get_global_style_stats()
-    hist_text = f"Historisk Stil Score: {hist_score:.1f
+    hist_text = f"Historisk Stil Score: {hist_score:.1f}" if hist_score is not None else "Historisk Stil Score: --"
+    
+    # 4. Konstruer Score Tekst
+    score_display = f"<b>Dagens Stil Score: {style_score}</b>"
+    if is_approved_before:
+        score_display += " ✅"
+    elif is_rejected_before:
+        score_display += " ❌"
+    
+    score_display += f" &nbsp;&nbsp;|&nbsp;&nbsp; {hist_text}"
+    
+    st.markdown(f"""
+    <div class="style-score-box">
+        {score_display}
+    </div>
+    """, unsafe_allow_html=True)
+
+    # 5. Vis tidligere kommentar hvis fundet
+    if is_approved_before:
+        saved_comment = approved_cache[current_outfit_id]
+        st.success(f"**Tidligere Stylist Bedømmelse (Godkendt):**\n\n{saved_comment}")
+    elif is_rejected_before:
+        saved_comment = rejected_cache[current_outfit_id]
+        st.warning(f"**Tidligere Stylist Bedømmelse (Ikke Godkendt):**\n\n{saved_comment}")
+
+    btn_col1, btn_col2 = st.columns(2)
+    
+    with btn_col1:
+        if st.button("🔮 Bedøm Outfit", type="secondary", use_container_width=True):
+            with st.spinner("Stylisten kigger på dit tøj..."):
+                feedback = get_ai_feedback(list(st.session_state.outfit.values()))
+                
+                if "✅" in feedback:
+                    st.success(feedback)
+                    # GEMMER AUTOMATISK I DATABASE (GODKENDT)
+                    save_approved_outfit(list(st.session_state.outfit.values()), feedback)
+                else:
+                    st.info(feedback)
+                    # GEMMER AUTOMATISK I DATABASE (AFVIST)
+                    save_rejected_outfit(list(st.session_state.outfit.values()), feedback)
+                
+                # Rydder cache så ikonet (✅ eller ❌) vises med det samme ved rerun
+                load_outfit_feedback_cache.clear() 
+
+    with btn_col2:
+        if st.button("✅ Gem & Bær", type="primary", use_container_width=True):
+            if weather_data:
+                with st.spinner("Gemmer og opdaterer tøj-statistik..."):
+                    # Gemmer scoren i historikken
+                    save_outfit_to_history(list(st.session_state.outfit.values()), weather_data, city, style_score)
+                    
+                    # Opdaterer den globale statistik
+                    update_global_style_stats(style_score)
+                    
+                    # Ryd cache så de nye statistikker indlæses næste gang
+                    load_wardrobe.clear()
+                    
+                st.toast(f"Gemt! Din score på {style_score} er nu en del af historikken.", icon="📈")
+                st.rerun() # Opdaterer siden så den nye historiske score vises
+            else:
+                st.error("Kan ikke gemme uden vejrdata. Prøv at indtaste din by igen i sidebaren.")
+
+if missing_cats:
+    st.subheader("Vælg næste del:")
+    tabs = st.tabs([CATEGORY_LABELS[c] for c in missing_cats])
+    
+    for i, cat in enumerate(missing_cats):
+        with tabs[i]:
+            all_items = get_items_by_category(wardrobe, cat)
+            valid_items_with_score = []
+            current_selection_list = list(st.session_state.outfit.values())
+            
+            # 1. Kør Farve-Matematik
+            for item in all_items:
+                is_valid, color_score, is_synonym = check_compatibility_basic(item, current_selection_list)
+                if is_valid:
+                    # 2. Kør SMART SCORE (Temperatur)
+                    smart_score, weather_penalty = calculate_smart_score(item, color_score, weather_data)
+                    valid_items_with_score.append((smart_score, item, color_score, weather_penalty, is_synonym))
+            
+            # Sorter efter Smart Score (lavest er bedst)
+            valid_items_with_score.sort(key=lambda x: x[0])
+            
+            if not valid_items_with_score:
+                st.error(f"Ingen {CATEGORY_LABELS[cat].lower()} matcher farvevalget!")
+            else:
+                img_cols = st.columns(3)
+                for idx, (smart_score, item, color_score, penalty, is_synonym) in enumerate(valid_items_with_score):
+                    col = img_cols[idx % 3]
+                    with col:
+                        st.image(item['image_path'], use_container_width=True)
+                        data = item['analysis']
+                        name = data['display_name']
+                        shade_str = f"({data.get('shade', 'Mellem')} {data.get('primary_color', '')})"
+                        
+                        label_text = f"{name}"
+                        if is_synonym:
+                            label_text += " ❗️"
+                        
+                        # Formater Score: Vis som heltal hvis muligt (fx 1.0 -> 1), ellers med 1 decimal
+                        score_fmt = f"{smart_score:.0f}" if smart_score.is_integer() else f"{smart_score:.1f}"
+                        label_text += f"\n{shade_str} {score_fmt}"
+                        
+                        # --- IKON LOGIK ---
+                        is_dead_end = False
+                        if st.session_state.outfit:
+                            is_dead_end = check_dead_end(item, current_selection_list, wardrobe)
+                        
+                        icon_prefix = ""
+                        
+                        if is_dead_end:
+                            icon_prefix += "⚠️ "
+                        
+                        # Tier Ikoner (Baseret udelukkende på farve-score)
+                        if color_score == 0: 
+                            icon_prefix += "⭐ "      # Perfekt match
+                        elif color_score == 1: 
+                            icon_prefix += "1️⃣ "     # Godt match
+                        elif 2 <= color_score <= 3: 
+                            icon_prefix += "2️⃣ "     # Acceptabelt match
+                        elif 4 <= color_score <= 5: 
+                            icon_prefix += "3️⃣ "     # Matcher, men med stor kontrast/synonym straf
+                        
+                        label_text = icon_prefix + label_text
+                        
+                        if st.button(label_text, key=f"add_{item['id']}"):
+                            if is_dead_end:
+                                st.toast(f"Blindgyde advarsel!", icon="⚠️")
+                            st.session_state.outfit[cat] = item
+                            st.rerun()
+            
+            if st.session_state.outfit:
+                st.markdown("")
+                with st.expander(f"💡 Inspiration: Farver til {CATEGORY_LABELS[cat].lower()}"):
+                    current_items = list(st.session_state.outfit.values())
+                    first_item = current_items[0]
+                    potential_colors = set(first_item['analysis']['compatibility'].get(cat, []))
+                    for outfit_item in current_items[1:]:
+                        allowed = set(outfit_item['analysis']['compatibility'].get(cat, []))
+                        potential_colors = potential_colors.intersection(allowed)
+                    if potential_colors:
+                        st.write("Disse farver passer:")
+                        st.markdown(" ".join([f"`{c}`" for c in sorted(list(potential_colors))]))
+                    else:
+                        st.warning("Ingen farve passer!")
