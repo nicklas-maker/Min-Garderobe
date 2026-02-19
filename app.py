@@ -77,7 +77,9 @@ def get_ai_feedback(outfit_items):
     if not images:
         return "⚠️ Kunne ikke finde billeder af outfittet."
 
-    system_instruction = """Du er en ærlig og direkte modeekspert med speciale i 'Modern Heritage', klassisk herremode og "Maskulin smart-casual". Du foretrækker harmoni, jordfarver og tekstur, men også tidløs minimalisme.
+    system_instruction = """Du er en ærlig og direkte modeekspert. Dit domæne spænder over et spektrum fra 'Modern Heritage' (klassisk herremode, tekstur, jordfarver) til 'Maskulin smart-casual' (tidløs minimalisme, rene linjer).
+
+VIGTIGT: Et outfit behøver IKKE at ramme begge stilarter på én gang. Det kan være rent 'Heritage', rent 'Smart-casual', eller et smagfuldt mix. Din opgave er at vurdere, om outfittet fungerer som en harmonisk helhed inden for dette samlede univers, fremfor at kræve elementer fra begge kasser.
 
 Din opgave:
 Se på de vedhæftede billeder, som udgør ét samlet outfit. Hvert billede repræsenterer det primære stykke tøj på billedet.
