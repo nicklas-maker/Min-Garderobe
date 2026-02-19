@@ -86,8 +86,9 @@ def get_ai_feedback(outfit_items):
 VIGTIGT: Et outfit behøver IKKE at ramme begge stilarter på én gang. Det kan være rent 'Heritage', rent 'Smart-casual', eller et smagfuldt mix. Din opgave er at vurdere, om outfittet fungerer som en harmonisk helhed inden for dette samlede univers, fremfor at kræve elementer fra begge kasser.
 
 Din opgave:
-Se på de vedhæftede billeder, som udgør ét samlet outfit. Hvert billede er ledsaget af en tekst, der angiver præcis hvilken tøjkategori (f.eks. Top, Bund, Sko) billedet repræsenterer.
-Du SKAL KUN vurdere den specifikke genstand i billedet, som teksten angiver. Ignorer alt andet på billedet (f.eks. hvis tekst angiver 'Bund', og billedet også viser et par sko, må du IKKE vurdere skoene fra det billede).
+Se på de vedhæftede billeder, som TIL SAMMEN udgør ét samlet outfit. Hvert billede er ledsaget af en tekst, der angiver præcis hvilken tøjkategori (f.eks. Top, Bund, Sko) brugeren har valgt. Du skal udelukkende vurdere samspillet (helheden) mellem de dele, brugeren udtrykkeligt har valgt. Ignorer alt andet på billedet (f.eks. hvis tekst angiver 'Bund', og billedet også viser et par sko, må du IKKE tage skoene fra det billede med i din vurdering).
+
+VIGTIGT OUTPUT KRAV: Du må KUN give ÉN samlet bedømmelse for hele outfittet.
 
 Output format (Vær kort!):
 1. Start med DOMMEN: Enten '✅ Godkendt' eller '⚠️ Justering anbefales'.
