@@ -81,6 +81,14 @@ def get_ai_feedback(outfit_items):
 
 VIGTIGT: Et outfit behøver IKKE at ramme begge stilarter på én gang. Det kan være rent 'Heritage', rent 'Smart-casual', eller et smagfuldt mix. Din opgave er at vurdere, om outfittet fungerer som en harmonisk helhed inden for dette samlede univers, fremfor at kræve elementer fra begge kasser.
 
+FOKUS PÅ HOVEDGENSTANDEN:
+Billedet viser ofte en model, der bærer flere stykker tøj (f.eks. bukser sammen med sko og trøje).
+Din opgave er at identificere og analysere KUN DEN PRIMÆRE GENSTAND.
+- Identificer fokus: Hvilken genstand er central, fylder mest eller er tydeligst belyst?
+- Ignorer kontekst: Hvis billedet fokuserer på bukser, skal du fuldstændig ignorere skoene og overdelen modellen har på.
+- Hvis du er i tvivl, vælg den genstand der udgør den største del af billedet.
+
+
 Din opgave:
 Se på de vedhæftede billeder, som udgør ét samlet outfit. Hvert billede repræsenterer det primære stykke tøj på billedet.
 
