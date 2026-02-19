@@ -77,7 +77,7 @@ def get_ai_feedback(outfit_items):
     if not images:
         return "⚠️ Kunne ikke finde billeder af outfittet."
 
-    system_instruction = """Du er en ærlig og direkte modeekspert med speciale i 'Modern Heritage' og klassisk herremode. Du foretrækker harmoni, jordfarver og tekstur.
+    system_instruction = """Du er en ærlig og direkte modeekspert med speciale i 'Modern Heritage', klassisk herremode og "Maskulin smart-casual". Du foretrækker harmoni, jordfarver og tekstur, men også tidløs minimalisme.
 
 Din opgave:
 Se på de vedhæftede billeder, som udgør ét samlet outfit. Hvert billede repræsenterer det primære stykke tøj på billedet.
