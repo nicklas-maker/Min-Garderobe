@@ -66,31 +66,28 @@ def get_ai_feedback(outfit_items):
     if not api_key:
         return "⚠️ Mangler Google API Nøgle i Secrets."
 
-    images = []
+    contents = []
     for item in outfit_items:
         img_url = item.get('image_path')
+        category = item.get('analysis', {}).get('category', 'Ukendt')
+        display_name = item.get('analysis', {}).get('display_name', '')
+        
         if img_url and img_url.startswith('http'):
             img = load_image_from_url(img_url)
             if img:
-                images.append(img)
+                contents.append(f"Dette billede repræsenterer din valgte {category} ({display_name}). Fokuser KUN på denne genstand på billedet:")
+                contents.append(img)
     
-    if not images:
+    if not contents:
         return "⚠️ Kunne ikke finde billeder af outfittet."
 
     system_instruction = """Du er en ærlig og direkte modeekspert. Dit domæne spænder over et spektrum fra 'Modern Heritage' (klassisk herremode, tekstur, jordfarver) til 'Maskulin smart-casual' (tidløs minimalisme, rene linjer).
 
 VIGTIGT: Et outfit behøver IKKE at ramme begge stilarter på én gang. Det kan være rent 'Heritage', rent 'Smart-casual', eller et smagfuldt mix. Din opgave er at vurdere, om outfittet fungerer som en harmonisk helhed inden for dette samlede univers, fremfor at kræve elementer fra begge kasser.
 
-FOKUS PÅ HOVEDGENSTANDEN:
-Billedet viser ofte en model, der bærer flere stykker tøj (f.eks. bukser sammen med sko og trøje).
-Din opgave er at identificere og analysere KUN DEN PRIMÆRE GENSTAND.
-- Identificer fokus: Hvilken genstand er central, fylder mest eller er tydeligst belyst?
-- Ignorer kontekst: Hvis billedet fokuserer på bukser, skal du fuldstændig ignorere skoene og overdelen modellen har på.
-- Hvis du er i tvivl, vælg den genstand der udgør den største del af billedet.
-
-
 Din opgave:
-Se på de vedhæftede billeder, som udgør ét samlet outfit. Hvert billede repræsenterer det primære stykke tøj på billedet.
+Se på de vedhæftede billeder, som udgør ét samlet outfit. Hvert billede er ledsaget af en tekst, der angiver præcis hvilken tøjkategori (f.eks. Top, Bund, Sko) billedet repræsenterer.
+Du SKAL KUN vurdere den specifikke genstand i billedet, som teksten angiver. Ignorer alt andet på billedet (f.eks. hvis tekst angiver 'Bund', og billedet også viser et par sko, må du IKKE vurdere skoene fra det billede).
 
 Output format (Vær kort!):
 1. Start med DOMMEN: Enten '✅ Godkendt' eller '⚠️ Justering anbefales'.
@@ -103,7 +100,7 @@ Output format (Vær kort!):
         client = genai.Client(api_key=api_key)
         response = client.models.generate_content(
             model="gemini-2.5-flash",
-            contents=images,
+            contents=contents,
             config={
                 "system_instruction": system_instruction,
                 "temperature": 0.5,
