@@ -38,6 +38,49 @@ if not firebase_admin._apps:
 
 db = firestore.client()
 
+# --- JSON SCHEMAS TIL API'ET ---
+# Dette tvinger AI'en til at levere præcis denne struktur hver gang (sparer tokens på prompt-eksempler)
+base_schema = {
+    "type": "OBJECT",
+    "properties": {
+        "category": {"type": "STRING"},
+        "type": {"type": "STRING"},
+        "display_name": {"type": "STRING"},
+        "primary_color": {"type": "STRING"},
+        "shade": {"type": "STRING"},
+        "secondary_color": {"type": "STRING"},
+        "pattern": {"type": "STRING"},
+        "compatibility": {
+            "type": "OBJECT",
+            "properties": {
+                "Top": {"type": "ARRAY", "items": {"type": "STRING"}},
+                "Bund": {"type": "ARRAY", "items": {"type": "STRING"}},
+                "Sko": {"type": "ARRAY", "items": {"type": "STRING"}},
+                "Strømper": {"type": "ARRAY", "items": {"type": "STRING"}},
+                "Overtøj": {"type": "ARRAY", "items": {"type": "STRING"}}
+            }
+        }
+    },
+    "required": ["category", "type", "display_name", "primary_color", "shade", "secondary_color", "pattern", "compatibility"]
+}
+
+additions_schema = {
+    "type": "OBJECT",
+    "properties": {
+        "compatibility_additions": {
+            "type": "OBJECT",
+            "properties": {
+                "Top": {"type": "ARRAY", "items": {"type": "STRING"}},
+                "Bund": {"type": "ARRAY", "items": {"type": "STRING"}},
+                "Sko": {"type": "ARRAY", "items": {"type": "STRING"}},
+                "Strømper": {"type": "ARRAY", "items": {"type": "STRING"}},
+                "Overtøj": {"type": "ARRAY", "items": {"type": "STRING"}}
+            }
+        }
+    },
+    "required": ["compatibility_additions"]
+}
+
 # --- AI PROMPT (Base / Junior Stylist) ---
 AI_PROMPT = """ROLLE & PERSONA:
 Du er en ekspert i 'Modern Heritage' og klassisk herremode (ofte kaldet 'Grandpa Core' eller 'Ivy Style'). Du elsker tekstur, lag-på-lag, og jordfarver. Din stil er tidløs og hyggelig, men altid velklædt. Du foretrækker harmoni frem for vilde kontraster. Du er bosat i Danmark, men inspireres af steder som Wall Street og Norditalien, særligt i perioden imellem 1950'erne og 1980'erne.
@@ -54,7 +97,7 @@ Din opgave er at identificere og analysere KUN DEN PRIMÆRE GENSTAND.
 
 
 Du skal analysere det vedhæftede billede af et stykke herretøj.
-Din opgave er at returnere struktureret JSON data. Du må IKKE opfinde dine egne værdier til de faste felter - du SKAL vælge fra listerne herunder.
+Du må IKKE opfinde dine egne værdier til de faste felter - du SKAL vælge fra listerne herunder.
 
 1. IDENTIFIKATION:
 - Hovedkategori: [Top, Bund, Sko, Strømper, Overtøj]
@@ -71,25 +114,7 @@ Baseret på din viden om 'Modern Heritage', lav lister over hvilke farver der pa
 - VIGTIGT: Sorter listerne! De absolut bedste matches skal stå FØRST. Men inkludér både klassiske neutrale farver og dybe accentfarver (som f.eks. Rød/Bordeaux), der komplementerer stilen samt sikre matches.
 - Familie-regel: Hvis en farvefamilie generelt passer (f.eks. blå nuancer), så skriv BÅDE 'Blå' og 'Navy' på listen over matches, medmindre det er et specifikt clash.
 - Tone-i-Tone: Husk også at inkludere 'tone-i-tone' matches, men sørg for at anbefale kontrast i intensitet (f.eks. Mørk Top til Lyse Bukser).
-- Brug KUN farvenavnene fra listen ovenfor.
-
-3. OUTPUT FORMAT (JSON):
-{
-  "category": "String",
-  "type": "String",
-  "display_name": "String",
-  "primary_color": "String",
-  "shade": "String",
-  "secondary_color": "String",
-  "pattern": "String",
-  "compatibility": {
-    "Top": ["Farve1", "Farve2"...],      // (Hvis item er Bund/Sko/Strømper/Overtøj)
-    "Bund": ["Farve1", "Farve2"...],     // (Hvis item er Top/Sko/Strømper/Overtøj)
-    "Sko": ["Farve1", "Farve2"...],      // (Hvis item er Top/Bund/Strømper/Overtøj)
-    "Strømper": ["Farve1", "Farve2"...], // (Hvis item er Top/Bund/Sko/Overtøj)
-    "Overtøj": ["Farve1", "Farve2"...]   // (Hvis item er Top/Bund/Sko/Strømper)
-  }
-}"""
+- Brug KUN farvenavnene fra listen ovenfor."""
 
 st.set_page_config(page_title="Garderobe Admin (AI & Cloud)", page_icon="🤖", layout="centered")
 
@@ -132,8 +157,8 @@ if uploaded_files:
     # 2. AI ANALYSE KNAP
     st.subheader("2. Analyser med AI")
     
-    if st.button("✨ Analyser (Junior + Senior)", type="secondary"):
-        with st.spinner("1/2: Junior Stylist analyserer billedet..."):
+    if st.button("✨ Analyser (Junior, Senior & Master)", type="secondary"):
+        with st.spinner("Analyserer billedet over 3 omgange..."):
             client = genai.Client(api_key=GOOGLE_API_KEY)
             
             try:
@@ -144,6 +169,7 @@ if uploaded_files:
                     config={
                         "temperature": 0,
                         "response_mime_type": "application/json",
+                        "response_schema": base_schema,
                         "system_instruction": AI_PROMPT
                     }
                 )
@@ -151,7 +177,6 @@ if uploaded_files:
                 json_str_1 = json.dumps(data1, ensure_ascii=False, indent=2)
 
                 # --- KØRSEL 2: Senior (Korrektur & Supplement) ---
-                # Vi bygger prompten dynamisk baseret på outputtet fra Kørsel 1
                 review_prompt = f"""
                 ANALYSE INSTRUKTION:
 
@@ -177,40 +202,28 @@ if uploaded_files:
                 2. Er der klassiske 'Modern Heritage' farver, der mangler? Vælg kun ud fra listen [Sort, Hvid, Creme, Grå, Navy, Blå, Beige, Brun, Grøn, Oliven, Rød, Bordeaux, Accent]
                 3. Tilføj dem KUN hvis det er et sikkert stil-match.
                 4. Nye farver skal tilføjes i bunden af listerne.
-                
-                OUTPUT:
-                Returner den komplette, opdaterede JSON struktur.
                 """
-
-                # st.write("Kører Senior Review...") # (Debug info)
                 
                 response2 = client.models.generate_content(
                     model="gemini-2.5-pro",
-                    contents=pil_images, # Senior ser også billederne
+                    contents=pil_images,
                     config={
-                        "temperature": 0.2, # Lidt mere kreativitet tilladt til at finde ekstra matches
+                        "temperature": 0.2,
                         "response_mime_type": "application/json",
+                        "response_schema": base_schema,
                         "system_instruction": review_prompt
                     }
                 )
                 data2 = json.loads(response2.text)
 
-                # --- FLETNING (Sikkerhedsnet) ---
-                # Vi bruger data2 (Senior) som base, men sikrer at vi ikke har mistet noget fra data1 ved en fejl
-                merged_data = data1.copy() # Start med Junior (Sikker base for stamdata)
-                
-                # Men brug Seniors compatibility lister som primær kilde, da de burde være en udvidet version
+                # Fletning 1 & 2
+                merged_data = data1.copy()
                 comp1 = merged_data.get("compatibility", {})
                 comp2 = data2.get("compatibility", {})
 
-                # Gennemgå alle kategorier og flet smart
                 for category in ["Top", "Bund", "Sko", "Strømper", "Overtøj"]:
-                    list1 = comp1.get(category, []) # Juniors liste
-                    list2 = comp2.get(category, []) # Seniors liste (Bør indeholde Junior + Nye)
-                    
-                    # Vi stoler på at Senior har gjort sit arbejde og inkluderet de gamle + nye.
-                    # Men for en sikkerheds skyld:
-                    # Vi tager Juniors liste først (for at bevare top-ranking), og tilføjer derefter unikke ting fra Senior.
+                    list1 = comp1.get(category, [])
+                    list2 = comp2.get(category, [])
                     
                     final_list = list(list1)
                     existing = set(list1)
@@ -223,14 +236,80 @@ if uploaded_files:
                     comp1[category] = final_list
                 
                 merged_data["compatibility"] = comp1
-                
-                # Brug Seniors display_name hvis det er rettet, ellers behold Juniors
-                if data2.get("display_name") and data2.get("display_name") != data1.get("display_name"):
-                     # Vi beholder Juniors navn som standard jf. din instruks om ikke at fokusere på det, 
-                     # medmindre Senior insisterer. Her vælger jeg at beholde Juniors data1 for stamdata 
-                     # for at overholde "Den skal ikke bruge fokus på at finde ting som Display Navn..."
-                     pass 
+                json_str_2 = json.dumps(merged_data, ensure_ascii=False, indent=2)
 
+                # --- FORBEREDELSE TIL KØRSEL 3 ---
+                # 1. Udregn hvilke farver der IKKE er valgt endnu
+                allowed_colors = ["Sort", "Hvid", "Creme", "Grå", "Navy", "Blå", "Beige", "Brun", "Grøn", "Oliven", "Rød", "Bordeaux", "Accent"]
+                remaining_colors = {}
+                for category in ["Top", "Bund", "Sko", "Strømper", "Overtøj"]:
+                    existing_colors = merged_data.get("compatibility", {}).get(category, [])
+                    remaining_colors[category] = [c for c in allowed_colors if c not in existing_colors]
+                
+                remaining_json_str = json.dumps(remaining_colors, ensure_ascii=False, indent=2)
+                
+                # 2. Udtræk kun basis-info om tøjet (så prompten bliver kortere)
+                item_info = {
+                    "type": merged_data.get("type"),
+                    "display_name": merged_data.get("display_name"),
+                    "primary_color": merged_data.get("primary_color"),
+                    "shade": merged_data.get("shade"),
+                    "secondary_color": merged_data.get("secondary_color"),
+                    "pattern": merged_data.get("pattern")
+                }
+                item_info_str = json.dumps(item_info, ensure_ascii=False, indent=2)
+
+                # --- KØRSEL 3: Master Stylist (Smart-Casual & Minimalisme) ---
+                master_prompt = f"""
+                ROLLE:
+                Du agerer nu som 'Master Stylist'. Din personlige stil er centreret omkring "Maskulin smart-casual" og "Tidløs minimalisme".
+                Du kigger på et stykke tøj med et stilrent, råt og skarpt blik.
+
+                OPGAVE:
+                Du skal vurdere tøjet og udvælge MAKSIMALT 1 ekstra farve pr. kategori fra en bruttoliste af farver, som vil passe til tøjet.
+
+                TØJET DU VURDERER:
+                {item_info_str}
+
+                RESTERENDE FARVER (Du må KUN vælge herfra):
+                {remaining_json_str}
+                
+                INSTRUKTION:
+                1. For HVER kategori (Top, Bund, Sko, Strømper, Overtøj), vurder de oplyste farver op mod tøjet og din minimalistiske stil.
+                2. VIGTIGT: Du må MAKSIMALT vælge 1 farve pr. kategori.
+                3. Hvis ingen af de resterende farver passer godt ind, SKAL du efterlade listen tom.
+                """
+
+                response3 = client.models.generate_content(
+                    model="gemini-2.5-pro",
+                    contents=pil_images,
+                    config={
+                        "temperature": 0.2,
+                        "response_mime_type": "application/json",
+                        "response_schema": additions_schema,
+                        "system_instruction": master_prompt
+                    }
+                )
+                data3 = json.loads(response3.text)
+
+                # --- FLETNING 3 (Tilføj resterende valg nederst) ---
+                comp_final = merged_data.get("compatibility", {})
+                additions = data3.get("compatibility_additions", {})
+
+                for category in ["Top", "Bund", "Sko", "Strømper", "Overtøj"]:
+                    existing_list = comp_final.get(category, [])
+                    new_suggestions = additions.get(category, [])
+                    
+                    added_count = 0
+                    for item in new_suggestions:
+                        # Tjekker om farven reelt var på rest-listen og tvinger max 1
+                        if item in remaining_colors.get(category, []) and added_count < 1:
+                            existing_list.append(item)
+                            added_count += 1
+                            
+                    comp_final[category] = existing_list
+
+                merged_data["compatibility"] = comp_final
                 final_json_text = json.dumps(merged_data, indent=2, ensure_ascii=False)
 
                 # Opdater UI
@@ -244,7 +323,6 @@ if uploaded_files:
                 st.error(f"AI Fejl: {str(e)}")
                 try:
                     models_iter = client.models.list()
-                    # Debug code removed
                 except:
                     pass
 
