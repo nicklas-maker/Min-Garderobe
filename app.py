@@ -75,7 +75,7 @@ def get_ai_feedback(outfit_items):
         if img_url and img_url.startswith('http'):
             img = load_image_from_url(img_url)
             if img:
-                contents.append(f"Dette billede repræsenterer din valgte {category} ({display_name}). Fokuser KUN på denne genstand på billedet:")
+                contents.append(f"Valgt {category}: {display_name}. (Ignorer modellen og eventuelt andet tøj på dette specifikke billede).")
                 contents.append(img)
     
     if not contents:
@@ -88,14 +88,14 @@ VIGTIGT: Et outfit behøver IKKE at ramme begge stilarter på én gang. Det kan 
 Din opgave:
 Se på de vedhæftede billeder, som TIL SAMMEN udgør ét samlet outfit. Hvert billede er ledsaget af en tekst, der angiver præcis hvilken tøjkategori (f.eks. Top, Bund, Sko) brugeren har valgt. Du skal udelukkende vurdere samspillet (helheden) mellem de dele, brugeren udtrykkeligt har valgt. Ignorer alt andet på billedet (f.eks. hvis tekst angiver 'Bund', og billedet også viser et par sko, må du IKKE tage skoene fra det billede med i din vurdering).
 
-VIGTIGT OUTPUT KRAV: Du må KUN give ÉN samlet bedømmelse for hele outfittet.
+VIGTIGT OUTPUT KRAV: Du må KUN give ÉN samlet bedømmelse for hele outfittet. Du må IKKE gennemgå og bedømme hver genstand for sig.
 
 Output format (Vær kort!):
 1. Start med DOMMEN: Enten '✅ Godkendt' eller '⚠️ Justering anbefales'.
 2. Giv KOMMENTAREN: Max 1-2 sætninger.
-   - Hvis godkendt: Hvorfor virker det? (Fx 'Godt spil mellem teksturerne').
-   - Hvis justering: Hvad clasher? (Fx 'Skoene er for formelle til de bukser').
-3. LØSNINGEN (Kun ved fejl): Foreslå specifikt én ting der skal ændres (Fx 'Prøv et par brune støvler i stedet')."""
+   - Hvis godkendt: Hvorfor virker helheden? (Fx 'Godt spil mellem teksturerne på trøjen og bukserne').
+   - Hvis justering: Hvad clasher i helheden? (Fx 'Skoene er for formelle til de bukser').
+3. LØSNINGEN (Kun ved fejl): Foreslå specifikt én ting der skal ændres for at redde outfittet (Fx 'Prøv et par brune støvler i stedet')."""
 
     try:
         client = genai.Client(api_key=api_key)
@@ -336,6 +336,24 @@ def calculate_match_score(target_color, allowed_list):
         
     return None, False
 
+def calculate_shade_bonus(outfit_items):
+    """Beregner bonus for kontrast i lys/mørk (shade) mellem bestemte kategorier."""
+    shade_values = {"Lys": 1, "Mellem": 2, "Mørk": 3}
+    shades = {}
+    
+    for item in outfit_items:
+        cat = item['analysis'].get('category')
+        shade_str = item['analysis'].get('shade', 'Mellem')
+        shades[cat] = shade_values.get(shade_str, 2)
+        
+    bonus = 0
+    if 'Top' in shades and 'Bund' in shades:
+        bonus += abs(shades['Top'] - shades['Bund'])
+    if 'Top' in shades and 'Overtøj' in shades:
+        bonus += abs(shades['Top'] - shades['Overtøj'])
+        
+    return bonus
+
 def calculate_outfit_style_score(outfit_items):
     """
     Beregner den gennemsnitlige stil-score for hele outfittet.
@@ -373,7 +391,10 @@ def calculate_outfit_style_score(outfit_items):
     if pair_count == 0:
         return 0.0
         
-    return round(total_score / pair_count, 1)
+    base_avg = total_score / pair_count
+    shade_bonus = calculate_shade_bonus(outfit_items)
+    
+    return round(base_avg - shade_bonus, 1)
 
 def calculate_smart_score(item, color_score, weather_data):
     """
@@ -672,6 +693,11 @@ if missing_cats:
                 if is_valid:
                     # 2. Kør SMART SCORE (Temperatur)
                     smart_score, weather_penalty = calculate_smart_score(item, color_score, weather_data)
+                    
+                    # --- SHADE BONUS (Kontrast) ---
+                    temp_outfit = current_selection_list + [item]
+                    shade_bonus = calculate_shade_bonus(temp_outfit)
+                    smart_score -= shade_bonus
                     
                     # 3. Kør SUCCESS BONUS (Tjek Historik)
                     candidate_set = set(current_ids + [item['id']])
