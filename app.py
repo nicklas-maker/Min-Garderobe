@@ -699,6 +699,9 @@ if missing_cats:
                     shade_bonus = calculate_shade_bonus(temp_outfit)
                     smart_score -= shade_bonus
                     
+                    # Beregn den forventede Style Score hvis dette item vælges
+                    projected_style_score = calculate_outfit_style_score(temp_outfit)
+                    
                     # 3. Kør SUCCESS BONUS (Tjek Historik)
                     candidate_set = set(current_ids + [item['id']])
                     
@@ -725,7 +728,7 @@ if missing_cats:
                     if st.session_state.outfit:
                         is_dead_end = check_dead_end(item, current_selection_list, wardrobe)
                     
-                    valid_items_with_score.append((smart_score, item, color_score, weather_penalty, is_synonym, is_part_of_success, is_rejected_exact, is_dead_end))
+                    valid_items_with_score.append((smart_score, item, color_score, weather_penalty, is_synonym, is_part_of_success, is_rejected_exact, is_dead_end, projected_style_score))
             
             # Sorter efter Smart Score (lavest er bedst)
             valid_items_with_score.sort(key=lambda x: x[0])
@@ -734,7 +737,7 @@ if missing_cats:
                 st.error(f"Ingen {CATEGORY_LABELS[cat].lower()} matcher farvevalget!")
             else:
                 img_cols = st.columns(3)
-                for idx, (smart_score, item, color_score, penalty, is_synonym, is_part_of_success, is_rejected_exact, is_dead_end) in enumerate(valid_items_with_score):
+                for idx, (smart_score, item, color_score, penalty, is_synonym, is_part_of_success, is_rejected_exact, is_dead_end, projected_style_score) in enumerate(valid_items_with_score):
                     col = img_cols[idx % 3]
                     with col:
                         st.image(item['image_path'], use_container_width=True)
@@ -746,10 +749,12 @@ if missing_cats:
                         if is_synonym:
                             label_text += " ❗️"
                         
-                        # VISNING: Vis gennemsnit for at kunne sammenligne med Style Score
+                        # VISNING: Vis forventet Style Score i stedet for bare farvegennemsnit
                         num_existing = len(current_selection_list)
-                        avg_display = color_score / num_existing if num_existing > 0 else 0.0
-                        label_text += f"\n{shade_str} {avg_display:.1f}"
+                        if num_existing > 0:
+                            label_text += f"\n{shade_str} {projected_style_score:.1f}"
+                        else:
+                            label_text += f"\n{shade_str} 0.0"
                         
                         # --- IKON LOGIK ---
                         
