@@ -1,6 +1,7 @@
 import streamlit as st
 import json
 import os
+import io
 from datetime import datetime
 import firebase_admin
 from firebase_admin import credentials, firestore
@@ -26,6 +27,33 @@ except FileNotFoundError:
 except KeyError as e:
     st.error(f"⚠️ Din secrets.toml mangler nøglen: {e}")
     st.stop()
+
+# --- HJÆLPEFUNKTIONER ---
+def standardize_image(image, target_size=(800, 800), bg_color=(255, 255, 255)):
+    """Skalerer og padder billedet til et standard kvadrat og returnerer WebP bytes."""
+    # Konverter til RGB for at fjerne evt. gennemsigtighed
+    if image.mode in ("RGBA", "P"):
+        img = image.convert("RGB")
+    else:
+        img = image.copy()
+    
+    # Bevar proportioner og skaler ned
+    img.thumbnail(target_size, Image.Resampling.LANCZOS)
+    
+    # Opret det nye firkantede lærred med baggrundsfarven
+    new_img = Image.new("RGB", target_size, bg_color)
+    
+    # Udregn positionen, så billedet centreres
+    paste_pos = (
+        (target_size[0] - img.width) // 2,
+        (target_size[1] - img.height) // 2
+    )
+    new_img.paste(img, paste_pos)
+    
+    # Gem som WebP bytes
+    img_byte_arr = io.BytesIO()
+    new_img.save(img_byte_arr, format='WEBP', quality=85)
+    return img_byte_arr.getvalue()
 
 # --- FIREBASE SETUP ---
 if not firebase_admin._apps:
@@ -112,6 +140,7 @@ Du må IKKE opfinde dine egne værdier til de faste felter - du SKAL vælge fra 
 2. MATCHING REGLER (Kompatibilitet):
 Baseret på din viden om 'Modern Heritage', lav lister over hvilke farver der passer til dette item. Inkludér både de sikre neutrale valg og karakteristiske accentfarver som Rød, så længe de overholder den tidløse æstetik.
 - VIGTIGT: Sorter listerne! De absolut bedste matches skal stå FØRST. Men inkludér både klassiske neutrale farver og dybe accentfarver (som f.eks. Rød/Bordeaux), der komplementerer stilen samt sikre matches.
+- EGEN KATEGORI: Du må IKKE bedømme farver for tøjets egen kategori. Hvis det analyserede tøj f.eks. er i hovedkategorien 'Overtøj', skal listen for 'Overtøj' forblive helt tom [].
 - Familie-regel: Hvis en farvefamilie generelt passer (f.eks. blå nuancer), så skriv BÅDE 'Blå' og 'Navy' på listen over matches, medmindre det er et specifikt clash.
 - Tone-i-Tone: Husk også at inkludere 'tone-i-tone' matches, men sørg for at anbefale kontrast i intensitet (f.eks. Mørk Top til Lyse Bukser).
 - Brug KUN farvenavnene fra listen ovenfor."""
@@ -202,6 +231,7 @@ if uploaded_files:
                 2. Er der klassiske 'Modern Heritage' farver, der mangler? Vælg kun ud fra listen [Sort, Hvid, Creme, Grå, Navy, Blå, Beige, Brun, Grøn, Oliven, Rød, Bordeaux, Accent]
                 3. Tilføj dem KUN hvis det er et sikkert stil-match.
                 4. Nye farver skal tilføjes i bunden af listerne.
+                5. EGEN KATEGORI: Du må ikke tilføje farver til tøjets egen kategori (den skal forblive helt tom).
                 """
                 
                 response2 = client.models.generate_content(
@@ -218,10 +248,16 @@ if uploaded_files:
 
                 # Fletning 1 & 2
                 merged_data = data1.copy()
+                item_category = merged_data.get("category")
                 comp1 = merged_data.get("compatibility", {})
                 comp2 = data2.get("compatibility", {})
 
                 for category in ["Top", "Bund", "Sko", "Strømper", "Overtøj"]:
+                    # Sikkerhedsnet: Spring tøjets egen kategori over og gør den tom
+                    if category == item_category:
+                        comp1[category] = []
+                        continue
+                        
                     list1 = comp1.get(category, [])
                     list2 = comp2.get(category, [])
                     
@@ -243,6 +279,10 @@ if uploaded_files:
                 allowed_colors = ["Sort", "Hvid", "Creme", "Grå", "Navy", "Blå", "Beige", "Brun", "Grøn", "Oliven", "Rød", "Bordeaux", "Accent"]
                 remaining_colors = {}
                 for category in ["Top", "Bund", "Sko", "Strømper", "Overtøj"]:
+                    # Tøjets egen kategori skal slet ikke med i Kørsel 3
+                    if category == item_category:
+                        continue 
+                        
                     existing_colors = merged_data.get("compatibility", {}).get(category, [])
                     remaining_colors[category] = [c for c in allowed_colors if c not in existing_colors]
                 
@@ -275,7 +315,7 @@ if uploaded_files:
                 {remaining_json_str}
                 
                 INSTRUKTION:
-                1. For HVER kategori (Top, Bund, Sko, Strømper, Overtøj), vurder de oplyste farver op mod tøjet og din minimalistiske stil.
+                1. For de kategorier, der er angivet i 'RESTERENDE FARVER', vurder de oplyste farver op mod tøjet og din minimalistiske stil.
                 2. VIGTIGT: Du må MAKSIMALT vælge 1 farve pr. kategori.
                 3. Hvis ingen af de resterende farver passer godt ind, SKAL du efterlade listen tom.
                 """
@@ -297,6 +337,10 @@ if uploaded_files:
                 additions = data3.get("compatibility_additions", {})
 
                 for category in ["Top", "Bund", "Sko", "Strømper", "Overtøj"]:
+                    if category == item_category:
+                        comp_final[category] = []
+                        continue
+                        
                     existing_list = comp_final.get(category, [])
                     new_suggestions = additions.get(category, [])
                     
@@ -358,13 +402,16 @@ if uploaded_files:
                     repo = g.get_repo(GITHUB_REPO_NAME)
                     
                     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                    original_ext = main_file.name.split(".")[-1]
-                    filename = f"img_{timestamp}.{original_ext}"
+                    filename = f"img_{timestamp}.webp"
                     path_in_repo = f"img/{filename}"
                     
                     commit_message = f"Tilføjet {data.get('display_name', 'nyt tøj')}"
-                    # PyGithub kræver bytes eller string, getvalue() giver bytes
-                    repo.create_file(path_in_repo, commit_message, main_file.getvalue())
+                    
+                    # Standardiser billedet før upload (800x800, hvid baggrund, WebP)
+                    processed_image_bytes = standardize_image(pil_images[0])
+                    
+                    # Upload til GitHub
+                    repo.create_file(path_in_repo, commit_message, processed_image_bytes)
                     
                     # C. Konstruer RAW URL
                     raw_url = f"https://raw.githubusercontent.com/{GITHUB_REPO_NAME}/main/{path_in_repo}"
