@@ -72,8 +72,8 @@ base_schema = {
     "type": "OBJECT",
     "properties": {
         "category": {"type": "STRING"},
-        "type": {"type": "STRING"},
         "display_name": {"type": "STRING"},
+        "type": {"type": "STRING"},
         "primary_color": {"type": "STRING"},
         "shade": {"type": "STRING"},
         "secondary_color": {"type": "STRING"},
@@ -89,7 +89,7 @@ base_schema = {
             }
         }
     },
-    "required": ["category", "type", "display_name", "primary_color", "shade", "secondary_color", "pattern", "compatibility"]
+    "required": ["category", "display_name", "type", "primary_color", "shade", "secondary_color", "pattern", "compatibility"]
 }
 
 additions_schema = {
