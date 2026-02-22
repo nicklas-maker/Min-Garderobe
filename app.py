@@ -797,8 +797,22 @@ if missing_cats:
                     for outfit_item in current_items[1:]:
                         allowed = set(outfit_item['analysis']['compatibility'].get(cat, []))
                         potential_colors = potential_colors.intersection(allowed)
+                    
                     if potential_colors:
-                        st.write("Disse farver passer:")
-                        st.markdown(" ".join([f"`{c}`" for c in sorted(list(potential_colors))]))
+                        # Beregn score for hver potentiel farve
+                        color_scores = []
+                        for color in potential_colors:
+                            total_score = 0
+                            for outfit_item in current_items:
+                                allowed_list = outfit_item['analysis']['compatibility'].get(cat, [])
+                                if color in allowed_list:
+                                    total_score += allowed_list.index(color)
+                            color_scores.append((color, total_score))
+                        
+                        # Sorter efter laveste score (bedste match)
+                        color_scores.sort(key=lambda x: x[1])
+                        
+                        st.write("Disse farver passer (sorteret efter bedste match):")
+                        st.markdown(" ".join([f"`{color} ({score} pt)`" for color, score in color_scores]))
                     else:
                         st.warning("Ingen farve passer!")
