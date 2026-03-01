@@ -361,6 +361,15 @@ def calculate_outfit_style_score(outfit_items):
     if len(outfit_items) < 2:
         return 0.0
     
+    # NYT: Tjek om udvalget er en del af en succes
+    _, _, approved_sets = load_outfit_feedback_cache()
+    outfit_ids = set([item['id'] for item in outfit_items])
+    is_outfit_approved = False
+    for a_set in approved_sets:
+        if outfit_ids.issubset(a_set):
+            is_outfit_approved = True
+            break
+    
     total_score = 0
     pair_count = 0
     items_list = list(outfit_items)
@@ -384,7 +393,10 @@ def calculate_outfit_style_score(outfit_items):
             if score1 is not None and score2 is not None:
                 total_score += (score1 + score2)
             else:
-                total_score += 10 
+                if is_outfit_approved:
+                    total_score += 3 # Tildelt acceptabel score for et AI-godkendt clash
+                else:
+                    total_score += 10 # Straf for inkompatibel
             
             pair_count += 1
                 
@@ -462,7 +474,7 @@ def check_compatibility_basic(candidate, current_outfit):
                 is_synonym_match = True
         else:
             is_valid = False
-            break 
+            # Break fjernet for at lade funktionen evaluere resten af outfittet også
     
     return is_valid, total_color_score, is_synonym_match
 
@@ -545,6 +557,7 @@ with st.sidebar:
         1️⃣ : Godt<br>
         2️⃣ : Fint<br>
         3️⃣ : Acceptabelt<br>
+        🚫 : Inkompatibel farve<br>
         ⚠️ : Blindgyde<br>
         ❗️ : Synonym farve<br>
         ✅ : Godkendt af Stylist<br>
@@ -690,54 +703,64 @@ if missing_cats:
             # 1. Kør Farve-Matematik & Score
             for item in all_items:
                 is_valid, color_score, is_synonym = check_compatibility_basic(item, current_selection_list)
-                if is_valid:
-                    # 2. Kør SMART SCORE (Temperatur)
-                    smart_score, weather_penalty = calculate_smart_score(item, color_score, weather_data)
-                    
-                    # --- SHADE BONUS (Kontrast) ---
-                    temp_outfit = current_selection_list + [item]
-                    shade_bonus = calculate_shade_bonus(temp_outfit)
-                    smart_score -= shade_bonus
-                    
-                    # Beregn den forventede Style Score hvis dette item vælges
-                    projected_style_score = calculate_outfit_style_score(temp_outfit)
-                    
-                    # 3. Kør SUCCESS BONUS (Tjek Historik)
-                    candidate_set = set(current_ids + [item['id']])
-                    
-                    # Tjek om det er en del af en succes
-                    is_part_of_success = False
-                    for a_set in approved_sets:
-                        if candidate_set.issubset(a_set):
-                            is_part_of_success = True
-                            break
-                    
+                
+                # 2. Kør SMART SCORE (Temperatur)
+                smart_score, weather_penalty = calculate_smart_score(item, color_score, weather_data)
+                
+                # --- SHADE BONUS (Kontrast) ---
+                temp_outfit = current_selection_list + [item]
+                shade_bonus = calculate_shade_bonus(temp_outfit)
+                smart_score -= shade_bonus
+                
+                # Beregn den forventede Style Score hvis dette item vælges
+                projected_style_score = calculate_outfit_style_score(temp_outfit)
+                
+                # 3. Kør SUCCESS BONUS (Tjek Historik)
+                candidate_set = set(current_ids + [item['id']])
+                
+                # Tjek om det er en del af en succes
+                is_part_of_success = False
+                for a_set in approved_sets:
+                    if candidate_set.issubset(a_set):
+                        is_part_of_success = True
+                        break
+                
+                is_strict_incompatible = False
+                
+                if not is_valid:
                     if is_part_of_success:
-                        smart_score -= SUCCESS_BONUS # Trækker 2 fra scoren
-                    
-                    # Tjek for Exact Rejection (Nu med score-straf)
-                    cand_id_list = sorted(list(candidate_set))
-                    cand_id_str = "_".join(cand_id_list)
-                    is_rejected_exact = cand_id_str in rejected_cache
-                    
-                    if is_rejected_exact:
-                        smart_score += REJECTION_PENALTY
+                        # Reddende AI godkendelse: fjern straffen og giv neutral color score base
+                        smart_score += 3 
+                    else:
+                        smart_score += 1000
+                        is_strict_incompatible = True
+                        
+                if is_part_of_success:
+                    smart_score -= SUCCESS_BONUS # Trækker 2 fra scoren
+                
+                # Tjek for Exact Rejection (Nu med score-straf)
+                cand_id_list = sorted(list(candidate_set))
+                cand_id_str = "_".join(cand_id_list)
+                is_rejected_exact = cand_id_str in rejected_cache
+                
+                if is_rejected_exact:
+                    smart_score += REJECTION_PENALTY
 
-                    # 4. Kør DEAD END CHECK (Blindgyde)
-                    is_dead_end = False
-                    if st.session_state.outfit:
-                        is_dead_end = check_dead_end(item, current_selection_list, wardrobe)
-                    
-                    valid_items_with_score.append((smart_score, item, color_score, weather_penalty, is_synonym, is_part_of_success, is_rejected_exact, is_dead_end, projected_style_score))
+                # 4. Kør DEAD END CHECK (Blindgyde)
+                is_dead_end = False
+                if st.session_state.outfit:
+                    is_dead_end = check_dead_end(item, current_selection_list, wardrobe)
+                
+                valid_items_with_score.append((smart_score, item, color_score, weather_penalty, is_synonym, is_part_of_success, is_rejected_exact, is_dead_end, projected_style_score, is_strict_incompatible))
             
             # Sorter efter Smart Score (lavest er bedst)
             valid_items_with_score.sort(key=lambda x: x[0])
             
             if not valid_items_with_score:
-                st.error(f"Ingen {CATEGORY_LABELS[cat].lower()} matcher farvevalget!")
+                st.error(f"Ingen {CATEGORY_LABELS[cat].lower()} tilgængelig!")
             else:
                 img_cols = st.columns(3)
-                for idx, (smart_score, item, color_score, penalty, is_synonym, is_part_of_success, is_rejected_exact, is_dead_end, projected_style_score) in enumerate(valid_items_with_score):
+                for idx, (smart_score, item, color_score, penalty, is_synonym, is_part_of_success, is_rejected_exact, is_dead_end, projected_style_score, is_strict_incompatible) in enumerate(valid_items_with_score):
                     col = img_cols[idx % 3]
                     with col:
                         st.image(item['image_path'], use_container_width=True)
@@ -760,6 +783,10 @@ if missing_cats:
                         
                         icon_prefix = ""
                         
+                        # B. Inkompatibel
+                        if is_strict_incompatible:
+                            icon_prefix += "🚫 "
+                        
                         # C. Blindgyde (Dead end)
                         if is_dead_end:
                             icon_prefix += "⚠️ "
@@ -770,19 +797,22 @@ if missing_cats:
                         elif is_rejected_exact:
                             icon_prefix += "❌ "
                         
-                        # E. Tier Ikoner (Farve)
-                        if color_score == 0: 
-                            icon_prefix += "⭐ "      
-                        elif color_score == 1: 
-                            icon_prefix += "1️⃣ "     
-                        elif 2 <= color_score <= 3: 
-                            icon_prefix += "2️⃣ "     
-                        elif 4 <= color_score <= 5: 
-                            icon_prefix += "3️⃣ "     
+                        # E. Tier Ikoner (Farve) - KUN hvis IKKE inkompatibel
+                        if not is_strict_incompatible:
+                            if color_score == 0: 
+                                icon_prefix += "⭐ "      
+                            elif color_score == 1: 
+                                icon_prefix += "1️⃣ "     
+                            elif 2 <= color_score <= 3: 
+                                icon_prefix += "2️⃣ "     
+                            elif 4 <= color_score <= 5: 
+                                icon_prefix += "3️⃣ "     
                         
                         label_text = icon_prefix + label_text
                         
                         if st.button(label_text, key=f"add_{item['id']}"):
+                            if is_strict_incompatible:
+                                st.toast("Advarsel: Inkompatibel farve valgt!", icon="🚫")
                             if is_dead_end:
                                 st.toast(f"Blindgyde advarsel!", icon="⚠️")
                             st.session_state.outfit[cat] = item
@@ -812,7 +842,7 @@ if missing_cats:
                         # Sorter efter laveste score (bedste match)
                         color_scores.sort(key=lambda x: x[1])
                         
-                        st.write("Disse farver passer (sorteret efter bedste match):")
-                        st.markdown(" ".join([f"`{color} ({score} pt)`" for color, score in color_scores]))
+                        st.write("Disse farver passer:")
+                        st.markdown(" ".join([f"`{color} ({score})`" for color, score in color_scores]))
                     else:
                         st.warning("Ingen farve passer!")
