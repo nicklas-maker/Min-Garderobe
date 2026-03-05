@@ -759,10 +759,12 @@ if missing_cats:
             if not valid_items_with_score:
                 st.error(f"Ingen {CATEGORY_LABELS[cat].lower()} tilgængelig!")
             else:
-                img_cols = st.columns(3)
                 for idx, (smart_score, item, color_score, penalty, is_synonym, is_part_of_success, is_rejected_exact, is_dead_end, projected_style_score, is_strict_incompatible) in enumerate(valid_items_with_score):
-                    col = img_cols[idx % 3]
-                    with col:
+                    # Opret en ny række med 3 kolonner for hver 3. genstand
+                    if idx % 3 == 0:
+                        img_cols = st.columns(3)
+                    
+                    with img_cols[idx % 3]:
                         st.image(item['image_path'], use_container_width=True)
                         data = item['analysis']
                         name = data['display_name']
