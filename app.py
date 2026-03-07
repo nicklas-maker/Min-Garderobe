@@ -774,11 +774,8 @@ if st.session_state.outfit:
                             winner_natural_score = 0
                             
                             for cand in cand_dicts:
-                                is_valid, c_score, _ = check_compatibility_basic(cand, base_outfit_items)
-                                shade_bonus = calculate_shade_bonus(base_outfit_items + [cand])
-                                
-                                # Udregn den "rene" score uafhængigt af vejret (farvescore - skyggebonus)
-                                pure_score = c_score - shade_bonus
+                                # Udregn den rene score PRÆCIS som den ville blive vist
+                                pure_score = calculate_outfit_style_score(base_outfit_items + [cand])
                                 
                                 if cand['id'] == winner_id:
                                     winner_natural_score = pure_score
@@ -788,7 +785,6 @@ if st.session_state.outfit:
                             
                             # Hvis en af taberne havde en lavere (bedre) ren score end vinderen,
                             # tvinger vi vinderen op på en 1. plads med minus point.
-                            # Hvis vinderen i forvejen var den med lavest score, rører vi intet.
                             if winner_natural_score > lowest_score:
                                 new_score = lowest_score - 1
                                 save_ai_override(base_outfit_items, cand_cat, winner_id, new_score)
@@ -862,12 +858,11 @@ if missing_cats:
             # 1. Beregninger
             for item in all_items:
                 is_valid, color_score, is_synonym = check_compatibility_basic(item, current_selection_list)
-                smart_score, weather_penalty = calculate_smart_score(item, color_score, weather_data)
+                _, weather_penalty = calculate_smart_score(item, color_score, weather_data)
                 
                 temp_outfit = current_selection_list + [item]
-                shade_bonus = calculate_shade_bonus(temp_outfit)
-                smart_score -= shade_bonus
                 
+                # Den oprindelige viste score (baseret rent på stil)
                 projected_style_score = calculate_outfit_style_score(temp_outfit)
                 
                 candidate_set = set(current_ids + [item['id']])
@@ -878,8 +873,24 @@ if missing_cats:
                         is_part_of_success = True
                         break
                 
-                is_strict_incompatible = False
+                cand_id_list = sorted(list(candidate_set))
+                cand_id_str = "_".join(cand_id_list)
+                is_rejected_exact = cand_id_str in rejected_cache
+
+                is_dead_end = False
+                if st.session_state.outfit:
+                    is_dead_end = check_dead_end(item, current_selection_list, wardrobe)
                 
+                # AI Override tjek (-1 point logik)
+                if override_key in ai_overrides and ai_overrides[override_key].get('winner_id') == item['id']:
+                    # Vinderen overskriver den synlige score til den vundne score
+                    projected_style_score = float(ai_overrides[override_key].get('new_score', projected_style_score))
+                
+                # Sortering er nu defineret som: Synlig Pointscore + Vejrpoint
+                smart_score = projected_style_score + weather_penalty
+                
+                # Tilføj andre bonus/straf til den endelige sorteringsscore
+                is_strict_incompatible = False
                 if not is_valid:
                     if is_part_of_success:
                         smart_score += 3 
@@ -890,23 +901,9 @@ if missing_cats:
                 if is_part_of_success:
                     smart_score -= SUCCESS_BONUS
                 
-                cand_id_list = sorted(list(candidate_set))
-                cand_id_str = "_".join(cand_id_list)
-                is_rejected_exact = cand_id_str in rejected_cache
-                
                 if is_rejected_exact:
                     smart_score += REJECTION_PENALTY
-
-                is_dead_end = False
-                if st.session_state.outfit:
-                    is_dead_end = check_dead_end(item, current_selection_list, wardrobe)
-                
-                # AI Override tjek (-1 point logik)
-                if override_key in ai_overrides and ai_overrides[override_key].get('winner_id') == item['id']:
-                    smart_score = ai_overrides[override_key].get('new_score', smart_score)
-                    # Sæt den viste score til præcis den arvede overskrevne vinder-score (f.eks. 6.0)
-                    projected_style_score = float(smart_score)
-                
+                    
                 valid_items_with_score.append((smart_score, item, color_score, weather_penalty, is_synonym, is_part_of_success, is_rejected_exact, is_dead_end, projected_style_score, is_strict_incompatible))
             
             valid_items_with_score.sort(key=lambda x: x[0])
