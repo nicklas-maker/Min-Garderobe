@@ -57,7 +57,7 @@ def load_image_from_url(url):
         print(f"Kunne ikke hente billede: {e}")
         return None
 
-def get_ai_feedback(outfit_items, candidates=None):
+def get_ai_feedback(outfit_items, candidates=None, base_already_approved=False):
     """Sender billederne til Gemini for en 'Smagsdommer' vurdering (med eller uden kandidater)."""
     
     api_key = None
@@ -109,7 +109,20 @@ Et outfit behøver IKKE at ramme begge stilarter på én gang. Din opgave er at 
 
     if candidates:
         if has_base:
-            system_instruction = f"""{system_domain}
+            if base_already_approved:
+                system_instruction = f"""{system_domain}
+Du har modtaget billeder af et 'Base Outfit' (Fundamentet) og nogle 'Kandidater'. Hver kandidat er tydeligt markeret med et 'Kandidat ID'.
+Fundamentet er allerede vurderet og GODKENDT.
+
+Din opgave er udelukkende at vælge den af kandidaterne, der bedst komplementerer basen som en helhed.
+* Hvis INGEN af kandidaterne passer acceptabelt til basen, skal du returnere præcist: '❌ INGEN VINDER' efterfulgt af en forklaring på, hvorfor de valgte kandidater ikke fungerer.
+* Hvis du finder en vinder, SKAL du bruge præcis dette format med disse tre linjer:
+✅ VINDER: [Kandidat ID]
+BEGRUNDELSE_VALG: [En kort forklaring på, hvorfor netop denne kandidat vandt over de andre]
+OUTFIT_BEDØMMELSE: [Skriv 1-2 sætninger, der UDELUKKENDE bedømmer det NYE samlede outfit (Base + Vinder). Denne tekst skal kunne læses for sig selv, som en generel anmeldelse af hele outfittet.]
+"""
+            else:
+                system_instruction = f"""{system_domain}
 Du har modtaget billeder af et 'Base Outfit' (Fundamentet) og nogle 'Kandidater'. Hver kandidat er tydeligt markeret med et 'Kandidat ID'.
 
 Din opgave er to-delt:
@@ -749,7 +762,7 @@ if st.session_state.outfit:
                     st.toast("Genbruger tidligere AI-vurdering for præcis denne kamp!", icon="⚡")
                 else:
                     with st.spinner(f"Stylisten vurderer dit fundament og de {len(cand_dicts)} kandidater..."):
-                        raw_feedback = get_ai_feedback(base_outfit_items, cand_dicts)
+                        raw_feedback = get_ai_feedback(base_outfit_items, cand_dicts, base_already_approved=is_approved_before)
                         # Gem resultatet, hvis det ikke var en fejl
                         if "AI Fejl:" not in raw_feedback and "⚠️" not in raw_feedback:
                             save_match_cache(match_id, raw_feedback)
