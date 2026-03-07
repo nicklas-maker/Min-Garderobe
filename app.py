@@ -148,7 +148,7 @@ Output format (Vær kort!):
             contents=contents,
             config={
                 "system_instruction": system_instruction,
-                "temperature": 0.5,
+                "temperature": 0.3,
             }
         )
         return response.text
