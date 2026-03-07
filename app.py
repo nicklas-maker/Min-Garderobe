@@ -118,7 +118,8 @@ Returner i stedet præcist: '❌ FUNDAMENT AFVIST' efterfulgt af din brutalt ær
 
 TRIN 2: Vælg Vinderen.
 Hvis basen ER godkendt, skal du nu vurdere Kandidaterne. Vælg den af kandidaterne, der bedst komplementerer basen som en helhed.
-Returner præcist: '✅ VINDER: [Kandidat ID]' (du SKAL skrive det præcise ID fra teksten, fx ✅ VINDER: hf83jdn2) efterfulgt af din begrundelse for valget.
+* Hvis INGEN af kandidaterne passer acceptabelt til basen, skal du returnere præcist: '❌ INGEN VINDER' efterfulgt af en forklaring på, hvorfor de valgte kandidater ikke fungerer.
+* Hvis du finder en vinder, returner præcist: '✅ VINDER: [Kandidat ID]' (du SKAL skrive det præcise ID fra teksten, fx ✅ VINDER: hf83jdn2) efterfulgt af din begrundelse for valget.
 """
         else:
             system_instruction = f"""{system_domain}
@@ -593,15 +594,17 @@ with st.sidebar:
 
 st.title("Dagens Outfit")
 
-# Håndter og vis AI-beskeder fra forrige "Spørg Stylist"-handling
+# Håndter og vis AI-beskeder fra forrige "Spørg Stylist" / "Bedøm Outfit" handling
 if "ai_msg" in st.session_state:
     msg = st.session_state.ai_msg
     if msg["type"] == "success":
         st.success(f"**👔 Stylisten siger:**\n\n{msg['text']}")
     elif msg["type"] == "error":
         st.error(f"**⚠️ Stylisten siger:**\n\n{msg['text']}")
-    else:
+    elif msg["type"] == "warning":
         st.warning(f"**Stylisten siger:**\n\n{msg['text']}")
+    else:
+        st.info(f"**Stylisten siger:**\n\n{msg['text']}")
     del st.session_state.ai_msg
 
 wardrobe = load_wardrobe()
@@ -680,17 +683,95 @@ if st.session_state.outfit:
     
     with btn_col1:
         if st.button("🔮 Bedøm Outfit", type="secondary", use_container_width=True):
-            with st.spinner("Stylisten kigger på dit tøj..."):
-                feedback = get_ai_feedback(list(st.session_state.outfit.values()))
-                
-                if "✅" in feedback:
-                    st.success(feedback)
-                    save_approved_outfit(list(st.session_state.outfit.values()), feedback)
-                else:
-                    st.info(feedback)
-                    save_rejected_outfit(list(st.session_state.outfit.values()), feedback)
-                
-                load_outfit_feedback_cache.clear() 
+            
+            # Find ud af, om brugeren har sat flueben ved nogen kandidater
+            cand_dicts = []
+            cand_cat = None
+            for item in wardrobe:
+                cat = item['analysis']['category']
+                if st.session_state.get(f"cand_{cat}_{item['id']}", False):
+                    cand_dicts.append(item)
+                    cand_cat = cat
+                    
+            base_outfit_items = list(st.session_state.outfit.values())
+            
+            if len(cand_dicts) > 0:
+                # --- KANDIDAT-TILSTAND ---
+                with st.spinner(f"Stylisten vurderer dit fundament og de {len(cand_dicts)} kandidater..."):
+                    feedback = get_ai_feedback(base_outfit_items, cand_dicts)
+                    
+                    if "❌ FUNDAMENT AFVIST" in feedback.upper():
+                        save_rejected_outfit(base_outfit_items, feedback)
+                        st.session_state.ai_msg = {"type": "error", "text": feedback}
+                        
+                    elif "❌ INGEN VINDER" in feedback.upper():
+                        save_approved_outfit(base_outfit_items, "Godkendt base, men ingen kandidater passede.")
+                        st.session_state.ai_msg = {"type": "warning", "text": feedback}
+                        
+                    elif "✅ VINDER:" in feedback.upper() or "✅" in feedback:
+                        winner_id = None
+                        winner_item = None
+                        for cand in cand_dicts:
+                            if cand['id'] in feedback:
+                                winner_id = cand['id']
+                                winner_item = cand
+                                break
+                        
+                        if winner_item:
+                            # Find den laveste "Smart Score" blandt de valgte kandidater
+                            lowest_score = float('inf')
+                            for cand in cand_dicts:
+                                is_valid, c_score, _ = check_compatibility_basic(cand, base_outfit_items)
+                                s_score, _ = calculate_smart_score(cand, c_score, weather_data)
+                                shade_bonus = calculate_shade_bonus(base_outfit_items + [cand])
+                                s_score -= shade_bonus
+                                if s_score < lowest_score:
+                                    lowest_score = s_score
+                            
+                            new_score = lowest_score - 1
+                            
+                            # Gem over-ride for AI scoren
+                            save_ai_override(base_outfit_items, cand_cat, winner_id, new_score)
+                            load_ai_overrides.clear()
+                            
+                            # Tilføj vinderen til outfittet øverst
+                            st.session_state.outfit[cand_cat] = winner_item
+                            
+                            # Erstat ID'et i prompten med det flotte navn til brugerfladen
+                            item_name = winner_item['analysis'].get('display_name', 'Ukendt')
+                            shade = winner_item['analysis'].get('shade', '')
+                            color = winner_item['analysis'].get('primary_color', '')
+                            full_name = f"{item_name} ({shade} {color})"
+                            
+                            display_feedback = feedback.replace(winner_id, full_name)
+                            
+                            # Gem det fulde outfit (base + strømper) som Godkendt!
+                            combined_outfit = base_outfit_items + [winner_item]
+                            save_approved_outfit(combined_outfit, display_feedback)
+                            
+                            st.session_state.ai_msg = {"type": "success", "text": display_feedback}
+                        else:
+                            st.session_state.ai_msg = {"type": "warning", "text": f"Kunne ikke finde vinder-ID'et i svaret:\n\n{feedback}"}
+                    
+                    # Fjern flueben, så de ikke hænger fast til næste gang
+                    for cand in cand_dicts:
+                        st.session_state[f"cand_{cand_cat}_{cand['id']}"] = False
+                    
+                    st.rerun()
+            else:
+                # --- STANDARD-TILSTAND (Ingen kandidater valgt) ---
+                with st.spinner("Stylisten kigger på dit tøj..."):
+                    feedback = get_ai_feedback(base_outfit_items)
+                    
+                    if "✅" in feedback:
+                        save_approved_outfit(base_outfit_items, feedback)
+                        st.session_state.ai_msg = {"type": "success", "text": feedback}
+                    else:
+                        save_rejected_outfit(base_outfit_items, feedback)
+                        st.session_state.ai_msg = {"type": "info", "text": feedback}
+                    
+                    load_outfit_feedback_cache.clear()
+                    st.rerun()
 
     with btn_col2:
         if st.button("✅ Gem & Bær", type="primary", use_container_width=True):
@@ -827,49 +908,6 @@ if missing_cats:
                         # Afkrydsningsboks til "Kandidat" systemet (Vises kun hvis der er en base at bygge på)
                         if len(current_selection_list) > 0:
                             st.checkbox("Vælg som kandidat", key=f"cand_{cat}_{item['id']}")
-            
-            # Tjek hvilke kandidater der er afkrydset for denne kategori
-            if len(current_selection_list) > 0:
-                selected_cands = [c for c in valid_items_with_score if st.session_state.get(f"cand_{cat}_{c[1]['id']}", False)]
-                if len(selected_cands) > 1:
-                    st.markdown("---")
-                    if st.button(f"✨ Spørg Stylist (Vælg bedste af {len(selected_cands)} kandidater)", key=f"ask_ai_{cat}", type="primary"):
-                        with st.spinner(f"Stylisten vurderer dit fundament og de {len(selected_cands)} kandidater..."):
-                            cand_dicts = [c[1] for c in selected_cands]
-                            
-                            # Kald til AI
-                            feedback = get_ai_feedback(current_selection_list, cand_dicts)
-                            
-                            if "❌ FUNDAMENT AFVIST" in feedback.upper():
-                                st.session_state.ai_msg = {"type": "error", "text": feedback}
-                                st.rerun()
-                            
-                            elif "✅ VINDER:" in feedback.upper() or "✅" in feedback:
-                                winner_id = None
-                                for cand in cand_dicts:
-                                    if cand['id'] in feedback:
-                                        winner_id = cand['id']
-                                        break
-                                
-                                if winner_id:
-                                    # Udregn den nye score (-1 point logik)
-                                    lowest_score = min([c[0] for c in selected_cands])
-                                    new_score = lowest_score - 1
-                                    
-                                    # Gem scoren
-                                    save_ai_override(current_selection_list, cat, winner_id, new_score)
-                                    load_ai_overrides.clear() # Tving genindlæsning af cache
-                                    
-                                    # Tilføj automatisk vinderen til outfittet
-                                    winner_item = next(c for c in cand_dicts if c['id'] == winner_id)
-                                    st.session_state.outfit[cat] = winner_item
-                                    
-                                    # Vis besked
-                                    st.session_state.ai_msg = {"type": "success", "text": feedback}
-                                    st.rerun()
-                                else:
-                                    st.session_state.ai_msg = {"type": "warning", "text": f"Kunne ikke finde vinder-ID'et i svaret:\n\n{feedback}"}
-                                    st.rerun()
             
             if st.session_state.outfit:
                 st.markdown("")
