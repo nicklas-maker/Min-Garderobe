@@ -56,8 +56,8 @@ def load_image_from_url(url):
         print(f"Kunne ikke hente billede: {e}")
         return None
 
-def get_ai_feedback(outfit_items):
-    """Sender billederne til Gemini for en 'Smagsdommer' vurdering."""
+def get_ai_feedback(outfit_items, candidates=None):
+    """Sender billederne til Gemini for en 'Smagsdommer' vurdering (med eller uden kandidater)."""
     
     api_key = None
     if "google_api_key" in st.secrets:
@@ -67,35 +67,74 @@ def get_ai_feedback(outfit_items):
         return "⚠️ Mangler Google API Nøgle i Secrets."
 
     contents = []
-    for item in outfit_items:
-        img_url = item.get('image_path')
-        category = item.get('analysis', {}).get('category', 'Ukendt')
-        display_name = item.get('analysis', {}).get('display_name', '')
-        
-        if img_url and img_url.startswith('http'):
-            img = load_image_from_url(img_url)
-            if img:
-                contents.append(f"Valgt {category}: {display_name}. (Ignorer modellen og eventuelt andet tøj på dette specifikke billede).")
-                contents.append(img)
     
+    # 1. Tilføj Base Outfit
+    has_base = len(outfit_items) > 0
+    if has_base:
+        if candidates:
+            contents.append("=== BASE OUTFIT (FUNDAMENTET) ===")
+        for item in outfit_items:
+            img_url = item.get('image_path')
+            category = item.get('analysis', {}).get('category', 'Ukendt')
+            display_name = item.get('analysis', {}).get('display_name', '')
+            
+            if img_url and img_url.startswith('http'):
+                img = load_image_from_url(img_url)
+                if img:
+                    contents.append(f"Valgt {category}: {display_name}. (Ignorer modellen og eventuelt andet tøj på dette specifikke billede).")
+                    contents.append(img)
+    
+    # 2. Tilføj Kandidater (hvis nogen)
+    if candidates:
+        contents.append("=== KANDIDATER (VÆLG ÉN AF DISSE) ===")
+        for item in candidates:
+            img_url = item.get('image_path')
+            category = item.get('analysis', {}).get('category', 'Ukendt')
+            display_name = item.get('analysis', {}).get('display_name', '')
+            item_id = item.get('id')
+            
+            if img_url and img_url.startswith('http'):
+                img = load_image_from_url(img_url)
+                if img:
+                    contents.append(f"Kandidat ID: {item_id} | Kategori: {category} | Navn: {display_name}")
+                    contents.append(img)
+
     if not contents:
-        return "⚠️ Kunne ikke finde billeder af outfittet."
+        return "⚠️ Kunne ikke finde billeder at sende til AI."
 
-    system_instruction = """Du er en ærlig og direkte modeekspert. Dit domæne spænder over et spektrum fra 'Modern Heritage' (klassisk herremode, tekstur, jordfarver) til 'Maskulin smart-casual' (tidløs minimalisme, rene linjer).
+    # 3. Dynamisk Prompt
+    system_domain = """Du er en ærlig og direkte modeekspert. Dit domæne spænder over et spektrum fra 'Modern Heritage' (klassisk herremode, tekstur, jordfarver) til 'Maskulin smart-casual' (tidløs minimalisme, rene linjer).
+Et outfit behøver IKKE at ramme begge stilarter på én gang. Din opgave er at vurdere, om tøjet fungerer som en harmonisk helhed."""
 
-VIGTIGT: Et outfit behøver IKKE at ramme begge stilarter på én gang. Det kan være rent 'Heritage', rent 'Smart-casual', eller et smagfuldt mix. Din opgave er at vurdere, om outfittet fungerer som en harmonisk helhed inden for dette samlede univers, fremfor at kræve elementer fra begge kasser.
+    if candidates:
+        if has_base:
+            system_instruction = f"""{system_domain}
+Du har modtaget billeder af et 'Base Outfit' (Fundamentet) og nogle 'Kandidater'. Hver kandidat er tydeligt markeret med et 'Kandidat ID'.
 
-Din opgave:
-Se på de vedhæftede billeder, som TIL SAMMEN udgør ét samlet outfit. Hvert billede er ledsaget af en tekst, der angiver præcis hvilken tøjkategori (f.eks. Top, Bund, Sko) brugeren har valgt. Du skal udelukkende vurdere samspillet (helheden) mellem de dele, brugeren udtrykkeligt har valgt. Ignorer alt andet på billedet (f.eks. hvis tekst angiver 'Bund', og billedet også viser et par sko, må du IKKE tage skoene fra det billede med i din vurdering).
+Din opgave er to-delt:
+TRIN 1: Vurder Base Outfittet. 
+Er fundamentet i orden? Hvis delene i Base Outfittet i sig selv clasher fundamentalt, skal du stoppe her. Du må IKKE vælge en kandidat.
+Returner i stedet præcist: '❌ FUNDAMENT AFVIST' efterfulgt af din brutalt ærlige begrundelse for, hvorfor basen ikke fungerer (hvad clasher?).
 
-VIGTIGT OUTPUT KRAV: Du må KUN give ÉN samlet bedømmelse for hele outfittet. Du må IKKE gennemgå og bedømme hver genstand for sig.
+TRIN 2: Vælg Vinderen.
+Hvis basen ER godkendt, skal du nu vurdere Kandidaterne. Vælg den af kandidaterne, der bedst komplementerer basen som en helhed.
+Returner præcist: '✅ VINDER: [Kandidat ID]' (du SKAL skrive det præcise ID fra teksten, fx ✅ VINDER: hf83jdn2) efterfulgt af din begrundelse for valget.
+"""
+        else:
+            system_instruction = f"""{system_domain}
+Du har modtaget billeder af nogle 'Kandidater' til et outfit. Hver kandidat er tydeligt markeret med et 'Kandidat ID'.
+Vælg den kandidat der er mest alsidig og stilfuld.
+Returner præcist: '✅ VINDER: [Kandidat ID]' (du SKAL skrive det præcise ID fra teksten) efterfulgt af din begrundelse for valget.
+"""
+    else:
+        system_instruction = f"""{system_domain}
+Din opgave: Se på de vedhæftede billeder, som TIL SAMMEN udgør ét samlet outfit. Vurder udelukkende samspillet (helheden) mellem de dele, brugeren udtrykkeligt har valgt. Ignorer alt andet på billedet.
+VIGTIGT OUTPUT KRAV: Du må KUN give ÉN samlet bedømmelse for hele outfittet.
 
 Output format (Vær kort!):
 1. Start med DOMMEN: Enten '✅ Godkendt' eller '⚠️ Justering anbefales'.
-2. Giv KOMMENTAREN: Max 1-2 sætninger.
-   - Hvis godkendt: Hvorfor virker helheden? (Fx 'Godt spil mellem teksturerne på trøjen og bukserne').
-   - Hvis justering: Hvad clasher i helheden? (Fx 'Skoene er for formelle til de bukser').
-3. LØSNINGEN (Kun ved fejl): Foreslå specifikt én ting der skal ændres for at redde outfittet (Fx 'Prøv et par brune støvler i stedet')."""
+2. Giv KOMMENTAREN: Max 1-2 sætninger om hvorfor det virker, eller hvad der clasher.
+3. LØSNINGEN (Kun ved fejl): Foreslå én ting der skal ændres for at redde outfittet."""
 
     try:
         client = genai.Client(api_key=api_key)
@@ -141,23 +180,20 @@ def get_weather_forecast(lat, lon):
         
         current_hour = min(datetime.now().hour, 23)
         
-        # --- NY LOGIK: 10 Timers Gennemsnit ---
         hourly_feels = hourly['apparent_temperature']
-        # Vi sikrer os at vi ikke går ud over arrayets længde
         end_index = min(current_hour + 10, len(hourly_feels))
         next_10_hours = hourly_feels[current_hour:end_index]
         
         if next_10_hours:
             avg_10h = sum(next_10_hours) / len(next_10_hours)
         else:
-            avg_10h = daily['temperature_2m_max'][0] # Fallback
+            avg_10h = daily['temperature_2m_max'][0]
 
-        # Henter "føles som" lige nu til display
         feels_like_now = hourly_feels[current_hour]
 
         return {
-            "temp_max": daily['temperature_2m_max'][0], # Kun til info
-            "avg_feels_like_10h": avg_10h, # Den nye vigtige værdi
+            "temp_max": daily['temperature_2m_max'][0],
+            "avg_feels_like_10h": avg_10h,
             "feels_like_now": feels_like_now,
             "rain_mm": daily['precipitation_sum'][0],
             "wind_kph": daily['wind_speed_10m_max'][0]
@@ -169,7 +205,6 @@ def get_weather_forecast(lat, lon):
 # --- HISTORIK & STATISTIK FUNKTIONER ---
 
 def update_item_stats(item_id, current_avg_temp):
-    """Opdaterer gennemsnitstemperatur og brugs-antal på selve tøjet."""
     try:
         doc_ref = db.collection("wardrobe").document(item_id)
         doc = doc_ref.get()
@@ -178,7 +213,6 @@ def update_item_stats(item_id, current_avg_temp):
             old_count = data.get('usage_count', 0)
             old_avg = data.get('avg_temp', 0)
             
-            # Formel for løbende gennemsnit
             if old_count == 0 or old_avg is None:
                 new_avg = current_avg_temp
             else:
@@ -193,7 +227,6 @@ def update_item_stats(item_id, current_avg_temp):
         print(f"Kunne ikke opdatere stats for {item_id}: {e}")
 
 def get_global_style_stats():
-    """Henter brugerens historiske gennemsnitlige stil-score."""
     try:
         doc = db.collection("stats").document("style_stats").get()
         if doc.exists:
@@ -203,7 +236,6 @@ def get_global_style_stats():
     return None
 
 def update_global_style_stats(new_score):
-    """Opdaterer den globale historiske stil-score."""
     try:
         doc_ref = db.collection("stats").document("style_stats")
         doc = doc_ref.get()
@@ -213,7 +245,6 @@ def update_global_style_stats(new_score):
             old_avg = data.get('average_score', 0.0)
             count = data.get('count', 0)
             
-            # Samme vægtede gennemsnit som ved temperatur
             new_avg = ((old_avg * count) + new_score) / (count + 1)
             new_count = count + 1
         else:
@@ -229,7 +260,6 @@ def update_global_style_stats(new_score):
         print(f"Fejl ved opdatering af historisk score: {e}")
 
 def save_outfit_to_history(outfit_items, weather_data, location, style_score):
-    # 1. Gem selve outfittet i historikken
     outfit_summary = []
     for item in outfit_items:
         data = item['analysis']
@@ -249,21 +279,19 @@ def save_outfit_to_history(outfit_items, weather_data, location, style_score):
     }
     db.collection("history").add(doc_data)
     
-    # 2. Opdater statistikken på hvert stykke tøj (Temperatur)
     current_avg_temp = weather_data.get('avg_feels_like_10h')
     if current_avg_temp is not None:
         for item in outfit_items:
             update_item_stats(item['id'], current_avg_temp)
 
-# --- NEW: OUTFIT MEMORY (APPROVED & REJECTED) ---
+# --- OUTFIT MEMORY & AI OVERRIDES ---
 
 def get_outfit_id(outfit_items):
-    """Laver et unikt ID for en kombination af tøj (uanset rækkefølge)."""
+    """Laver et unikt ID for en kombination af tøj."""
     ids = sorted([item['id'] for item in outfit_items])
     return "_".join(ids)
 
 def save_approved_outfit(outfit_items, comment):
-    """Gemmer et godkendt outfit i databasen."""
     try:
         oid = get_outfit_id(outfit_items)
         db.collection("approved_outfits").document(oid).set({
@@ -274,7 +302,6 @@ def save_approved_outfit(outfit_items, comment):
         print(f"Fejl ved gemning af godkendt outfit: {e}")
 
 def save_rejected_outfit(outfit_items, comment):
-    """Gemmer et afvist outfit i databasen."""
     try:
         oid = get_outfit_id(outfit_items)
         db.collection("rejected_outfits").document(oid).set({
@@ -286,28 +313,17 @@ def save_rejected_outfit(outfit_items, comment):
 
 @st.cache_data(ttl=600)
 def load_outfit_feedback_cache():
-    """
-    Indlæser godkendte og afviste outfits.
-    Returnerer:
-    1. approved (dict): ID_str -> Comment
-    2. rejected (dict): ID_str -> Comment
-    3. approved_sets (list of sets): Liste med godkendte ID-kombinationer som sets for subset-matching
-    """
     approved = {}
     rejected = {}
     approved_sets = []
-    
     try:
-        # Hent Godkendte
         docs_app = db.collection("approved_outfits").stream()
         for doc in docs_app:
             approved[doc.id] = doc.to_dict().get('comment', '')
             if doc.id:
-                # Omdan ID string (id1_id2) til et set {id1, id2}
                 ids = set(doc.id.split('_'))
                 approved_sets.append(ids)
             
-        # Hent Afviste
         docs_rej = db.collection("rejected_outfits").stream()
         for doc in docs_rej:
             rejected[doc.id] = doc.to_dict().get('comment', '')
@@ -315,10 +331,35 @@ def load_outfit_feedback_cache():
         pass
     return approved, rejected, approved_sets
 
+def save_ai_override(base_outfit_items, category, winner_id, new_score):
+    """Gemmer den overskrevne score for et specifikt outfit + kategori valgt af AI."""
+    try:
+        base_id = get_outfit_id(base_outfit_items) if base_outfit_items else "empty"
+        doc_id = f"{base_id}_{category}"
+        db.collection("ai_score_overrides").document(doc_id).set({
+            "base_outfit": base_id,
+            "category": category,
+            "winner_id": winner_id,
+            "new_score": new_score,
+            "timestamp": firestore.SERVER_TIMESTAMP
+        })
+    except Exception as e:
+        print(f"Fejl ved gemning af AI override: {e}")
+
+@st.cache_data(ttl=600)
+def load_ai_overrides():
+    overrides = {}
+    try:
+        docs = db.collection("ai_score_overrides").stream()
+        for doc in docs:
+            overrides[doc.id] = doc.to_dict()
+    except:
+        pass
+    return overrides
+
 # --- SMART SCORE LOGIK ---
 
 def calculate_match_score(target_color, allowed_list):
-    """Beregner point for farve-match (Uændret)."""
     if target_color in allowed_list:
         return allowed_list.index(target_color), False
     
@@ -337,7 +378,6 @@ def calculate_match_score(target_color, allowed_list):
     return None, False
 
 def calculate_shade_bonus(outfit_items):
-    """Beregner bonus for kontrast i lys/mørk (shade) mellem bestemte kategorier."""
     shade_values = {"Lys": 1, "Mellem": 2, "Mørk": 3}
     shades = {}
     
@@ -355,13 +395,9 @@ def calculate_shade_bonus(outfit_items):
     return bonus
 
 def calculate_outfit_style_score(outfit_items):
-    """
-    Beregner den gennemsnitlige stil-score for hele outfittet.
-    """
     if len(outfit_items) < 2:
         return 0.0
     
-    # NYT: Tjek om udvalget er en del af en succes
     _, _, approved_sets = load_outfit_feedback_cache()
     outfit_ids = set([item['id'] for item in outfit_items])
     is_outfit_approved = False
@@ -374,7 +410,6 @@ def calculate_outfit_style_score(outfit_items):
     pair_count = 0
     items_list = list(outfit_items)
     
-    # Gennemgå alle unikke par
     for i in range(len(items_list)):
         for j in range(i + 1, len(items_list)):
             item1 = items_list[i]
@@ -383,7 +418,6 @@ def calculate_outfit_style_score(outfit_items):
             data1 = item1['analysis']
             data2 = item2['analysis']
             
-            # Tjek match begge veje
             allowed1 = data1['compatibility'].get(data2['category'], [])
             allowed2 = data2['compatibility'].get(data1['category'], [])
             
@@ -394,9 +428,9 @@ def calculate_outfit_style_score(outfit_items):
                 total_score += (score1 + score2)
             else:
                 if is_outfit_approved:
-                    total_score += 3 # Tildelt acceptabel score for et AI-godkendt clash
+                    total_score += 3
                 else:
-                    total_score += 10 # Straf for inkompatibel
+                    total_score += 10
             
             pair_count += 1
                 
@@ -409,14 +443,8 @@ def calculate_outfit_style_score(outfit_items):
     return round(base_avg - shade_bonus, 1)
 
 def calculate_smart_score(item, color_score, weather_data):
-    """
-    Ny logik:
-    Score = Farvepoint + Temperaturstraf
-    """
     weather_penalty = 0
-    
-    # Hent tøjets historiske gennemsnit (hvis det findes)
-    item_avg = item.get('avg_temp') # Kommer fra Firestore
+    item_avg = item.get('avg_temp')
     current_avg = weather_data.get('avg_feels_like_10h')
     
     if item_avg is not None and current_avg is not None:
@@ -474,7 +502,6 @@ def check_compatibility_basic(candidate, current_outfit):
                 is_synonym_match = True
         else:
             is_valid = False
-            # Break fjernet for at lade funktionen evaluere resten af outfittet også
     
     return is_valid, total_color_score, is_synonym_match
 
@@ -523,7 +550,6 @@ with st.sidebar:
         st.session_state.city = city
         st.rerun()
 
-    # Hent vejr
     weather_data = None
     lat, lon = get_coordinates(city)
     
@@ -548,11 +574,11 @@ with st.sidebar:
     else:
         st.warning("Kunne ikke finde byen.")
 
-    # --- IKON ORDBOG ---
     st.markdown("---")
     with st.expander("📖 Ikoner", expanded=False):
         st.markdown("""
         <small>
+        👑 : Valgt af Stylist (Minus point)<br>
         ⭐ : Perfekt<br>
         1️⃣ : Godt<br>
         2️⃣ : Fint<br>
@@ -567,17 +593,25 @@ with st.sidebar:
 
 st.title("Dagens Outfit")
 
-# Hent garderobe
+# Håndter og vis AI-beskeder fra forrige "Spørg Stylist"-handling
+if "ai_msg" in st.session_state:
+    msg = st.session_state.ai_msg
+    if msg["type"] == "success":
+        st.success(f"**👔 Stylisten siger:**\n\n{msg['text']}")
+    elif msg["type"] == "error":
+        st.error(f"**⚠️ Stylisten siger:**\n\n{msg['text']}")
+    else:
+        st.warning(f"**Stylisten siger:**\n\n{msg['text']}")
+    del st.session_state.ai_msg
+
 wardrobe = load_wardrobe()
 if not wardrobe:
     st.info("Databasen er tom. Tilføj tøj via admin.py.")
     st.stop()
 
-# Session State
 if 'outfit' not in st.session_state:
     st.session_state.outfit = {} 
 
-# Nulstil knap
 if st.sidebar.button("🗑️ Nulstil Outfit"):
     st.session_state.outfit = {}
     st.rerun()
@@ -610,21 +644,17 @@ if not missing_cats:
 
 # --- STYLE SCORE & KNAPPER ---
 if st.session_state.outfit:
-    # 1. Hent Hukommelse (Godkendte og Afviste outfits)
-    approved_cache, rejected_cache, _ = load_outfit_feedback_cache() # Ignore sets here
+    approved_cache, rejected_cache, _ = load_outfit_feedback_cache()
     current_outfit_id = get_outfit_id(st.session_state.outfit.values())
     
     is_approved_before = current_outfit_id in approved_cache
     is_rejected_before = current_outfit_id in rejected_cache
     
-    # 2. Beregn Stil Score (Gennemsnit af farve-matches)
     style_score = calculate_outfit_style_score(st.session_state.outfit.values())
     
-    # 3. Hent Historisk Score
     hist_score = get_global_style_stats()
     hist_text = f"Historisk Stil Score: {hist_score:.1f}" if hist_score is not None else "Historisk Stil Score: --"
     
-    # 4. Konstruer Score Tekst
     score_display = f"<b>Dagens Stil Score: {style_score}</b>"
     if is_approved_before:
         score_display += " ✅"
@@ -639,7 +669,6 @@ if st.session_state.outfit:
     </div>
     """, unsafe_allow_html=True)
 
-    # 5. Vis tidligere kommentar hvis fundet
     if is_approved_before:
         saved_comment = approved_cache[current_outfit_id]
         st.success(f"**Tidligere Bedømmelse (Godkendt):**\n\n{saved_comment}")
@@ -656,31 +685,23 @@ if st.session_state.outfit:
                 
                 if "✅" in feedback:
                     st.success(feedback)
-                    # GEMMER AUTOMATISK I DATABASE (GODKENDT)
                     save_approved_outfit(list(st.session_state.outfit.values()), feedback)
                 else:
                     st.info(feedback)
-                    # GEMMER AUTOMATISK I DATABASE (AFVIST)
                     save_rejected_outfit(list(st.session_state.outfit.values()), feedback)
                 
-                # Rydder cache så ikonet (✅ eller ❌) vises med det samme ved rerun
                 load_outfit_feedback_cache.clear() 
 
     with btn_col2:
         if st.button("✅ Gem & Bær", type="primary", use_container_width=True):
             if weather_data:
                 with st.spinner("Gemmer og opdaterer tøj-statistik..."):
-                    # Gemmer scoren i historikken
                     save_outfit_to_history(list(st.session_state.outfit.values()), weather_data, city, style_score)
-                    
-                    # Opdaterer den globale statistik
                     update_global_style_stats(style_score)
-                    
-                    # Ryd cache så de nye statistikker indlæses næste gang
                     load_wardrobe.clear()
                     
                 st.toast(f"Gemt! Din score på {style_score} er nu en del af historikken.", icon="📈")
-                st.rerun() # Opdaterer siden så den nye historiske score vises
+                st.rerun()
             else:
                 st.error("Kan ikke gemme uden vejrdata. Prøv at indtaste din by igen i sidebaren.")
 
@@ -688,8 +709,8 @@ if missing_cats:
     st.subheader("Vælg næste del:")
     tabs = st.tabs([CATEGORY_LABELS[c] for c in missing_cats])
     
-    # Pre-load cache for knapperne
     approved_cache, rejected_cache, approved_sets = load_outfit_feedback_cache()
+    ai_overrides = load_ai_overrides()
     
     for i, cat in enumerate(missing_cats):
         with tabs[i]:
@@ -697,28 +718,23 @@ if missing_cats:
             valid_items_with_score = []
             current_selection_list = list(st.session_state.outfit.values())
             
-            # Forbered nuværende IDs til sammenligning
             current_ids = [item['id'] for item in current_selection_list]
+            base_outfit_id = get_outfit_id(current_selection_list) if current_selection_list else "empty"
+            override_key = f"{base_outfit_id}_{cat}"
 
-            # 1. Kør Farve-Matematik & Score
+            # 1. Beregninger
             for item in all_items:
                 is_valid, color_score, is_synonym = check_compatibility_basic(item, current_selection_list)
-                
-                # 2. Kør SMART SCORE (Temperatur)
                 smart_score, weather_penalty = calculate_smart_score(item, color_score, weather_data)
                 
-                # --- SHADE BONUS (Kontrast) ---
                 temp_outfit = current_selection_list + [item]
                 shade_bonus = calculate_shade_bonus(temp_outfit)
                 smart_score -= shade_bonus
                 
-                # Beregn den forventede Style Score hvis dette item vælges
                 projected_style_score = calculate_outfit_style_score(temp_outfit)
                 
-                # 3. Kør SUCCESS BONUS (Tjek Historik)
                 candidate_set = set(current_ids + [item['id']])
                 
-                # Tjek om det er en del af en succes
                 is_part_of_success = False
                 for a_set in approved_sets:
                     if candidate_set.issubset(a_set):
@@ -729,16 +745,14 @@ if missing_cats:
                 
                 if not is_valid:
                     if is_part_of_success:
-                        # Reddende AI godkendelse: fjern straffen og giv neutral color score base
                         smart_score += 3 
                     else:
                         smart_score += 1000
                         is_strict_incompatible = True
                         
                 if is_part_of_success:
-                    smart_score -= SUCCESS_BONUS # Trækker 2 fra scoren
+                    smart_score -= SUCCESS_BONUS
                 
-                # Tjek for Exact Rejection (Nu med score-straf)
                 cand_id_list = sorted(list(candidate_set))
                 cand_id_str = "_".join(cand_id_list)
                 is_rejected_exact = cand_id_str in rejected_cache
@@ -746,21 +760,24 @@ if missing_cats:
                 if is_rejected_exact:
                     smart_score += REJECTION_PENALTY
 
-                # 4. Kør DEAD END CHECK (Blindgyde)
                 is_dead_end = False
                 if st.session_state.outfit:
                     is_dead_end = check_dead_end(item, current_selection_list, wardrobe)
                 
-                valid_items_with_score.append((smart_score, item, color_score, weather_penalty, is_synonym, is_part_of_success, is_rejected_exact, is_dead_end, projected_style_score, is_strict_incompatible))
+                # AI Override tjek (-1 point logik)
+                is_ai_override = False
+                if override_key in ai_overrides and ai_overrides[override_key].get('winner_id') == item['id']:
+                    smart_score = ai_overrides[override_key].get('new_score', smart_score)
+                    is_ai_override = True
+                
+                valid_items_with_score.append((smart_score, item, color_score, weather_penalty, is_synonym, is_part_of_success, is_rejected_exact, is_dead_end, projected_style_score, is_strict_incompatible, is_ai_override))
             
-            # Sorter efter Smart Score (lavest er bedst)
             valid_items_with_score.sort(key=lambda x: x[0])
             
             if not valid_items_with_score:
                 st.error(f"Ingen {CATEGORY_LABELS[cat].lower()} tilgængelig!")
             else:
-                for idx, (smart_score, item, color_score, penalty, is_synonym, is_part_of_success, is_rejected_exact, is_dead_end, projected_style_score, is_strict_incompatible) in enumerate(valid_items_with_score):
-                    # Opret en ny række med 3 kolonner for hver 3. genstand
+                for idx, (smart_score, item, color_score, penalty, is_synonym, is_part_of_success, is_rejected_exact, is_dead_end, projected_style_score, is_strict_incompatible, is_ai_override) in enumerate(valid_items_with_score):
                     if idx % 3 == 0:
                         img_cols = st.columns(3)
                     
@@ -774,7 +791,6 @@ if missing_cats:
                         if is_synonym:
                             label_text += " ❗️"
                         
-                        # VISNING: Vis forventet Style Score i stedet for bare farvegennemsnit
                         num_existing = len(current_selection_list)
                         if num_existing > 0:
                             label_text += f"\n{shade_str} {projected_style_score:.1f}"
@@ -782,33 +798,21 @@ if missing_cats:
                             label_text += f"\n{shade_str} 0.0"
                         
                         # --- IKON LOGIK ---
-                        
                         icon_prefix = ""
+                        if is_ai_override: icon_prefix += "👑 "
+                        if is_strict_incompatible: icon_prefix += "🚫 "
+                        if is_dead_end: icon_prefix += "⚠️ "
                         
-                        # B. Inkompatibel
-                        if is_strict_incompatible:
-                            icon_prefix += "🚫 "
-                        
-                        # C. Blindgyde (Dead end)
-                        if is_dead_end:
-                            icon_prefix += "⚠️ "
-                        
-                        # D. Historik Ikoner
                         if is_part_of_success:
                             icon_prefix += "✅ "
                         elif is_rejected_exact:
                             icon_prefix += "❌ "
                         
-                        # E. Tier Ikoner (Farve) - KUN hvis IKKE inkompatibel
                         if not is_strict_incompatible:
-                            if color_score == 0: 
-                                icon_prefix += "⭐ "      
-                            elif color_score == 1: 
-                                icon_prefix += "1️⃣ "     
-                            elif 2 <= color_score <= 3: 
-                                icon_prefix += "2️⃣ "     
-                            elif 4 <= color_score <= 5: 
-                                icon_prefix += "3️⃣ "     
+                            if color_score == 0: icon_prefix += "⭐ "      
+                            elif color_score == 1: icon_prefix += "1️⃣ "     
+                            elif 2 <= color_score <= 3: icon_prefix += "2️⃣ "     
+                            elif 4 <= color_score <= 5: icon_prefix += "3️⃣ "     
                         
                         label_text = icon_prefix + label_text
                         
@@ -819,6 +823,53 @@ if missing_cats:
                                 st.toast(f"Blindgyde advarsel!", icon="⚠️")
                             st.session_state.outfit[cat] = item
                             st.rerun()
+                            
+                        # Afkrydsningsboks til "Kandidat" systemet (Vises kun hvis der er en base at bygge på)
+                        if len(current_selection_list) > 0:
+                            st.checkbox("Vælg som kandidat", key=f"cand_{cat}_{item['id']}")
+            
+            # Tjek hvilke kandidater der er afkrydset for denne kategori
+            if len(current_selection_list) > 0:
+                selected_cands = [c for c in valid_items_with_score if st.session_state.get(f"cand_{cat}_{c[1]['id']}", False)]
+                if len(selected_cands) > 1:
+                    st.markdown("---")
+                    if st.button(f"✨ Spørg Stylist (Vælg bedste af {len(selected_cands)} kandidater)", key=f"ask_ai_{cat}", type="primary"):
+                        with st.spinner(f"Stylisten vurderer dit fundament og de {len(selected_cands)} kandidater..."):
+                            cand_dicts = [c[1] for c in selected_cands]
+                            
+                            # Kald til AI
+                            feedback = get_ai_feedback(current_selection_list, cand_dicts)
+                            
+                            if "❌ FUNDAMENT AFVIST" in feedback.upper():
+                                st.session_state.ai_msg = {"type": "error", "text": feedback}
+                                st.rerun()
+                            
+                            elif "✅ VINDER:" in feedback.upper() or "✅" in feedback:
+                                winner_id = None
+                                for cand in cand_dicts:
+                                    if cand['id'] in feedback:
+                                        winner_id = cand['id']
+                                        break
+                                
+                                if winner_id:
+                                    # Udregn den nye score (-1 point logik)
+                                    lowest_score = min([c[0] for c in selected_cands])
+                                    new_score = lowest_score - 1
+                                    
+                                    # Gem scoren
+                                    save_ai_override(current_selection_list, cat, winner_id, new_score)
+                                    load_ai_overrides.clear() # Tving genindlæsning af cache
+                                    
+                                    # Tilføj automatisk vinderen til outfittet
+                                    winner_item = next(c for c in cand_dicts if c['id'] == winner_id)
+                                    st.session_state.outfit[cat] = winner_item
+                                    
+                                    # Vis besked
+                                    st.session_state.ai_msg = {"type": "success", "text": feedback}
+                                    st.rerun()
+                                else:
+                                    st.session_state.ai_msg = {"type": "warning", "text": f"Kunne ikke finde vinder-ID'et i svaret:\n\n{feedback}"}
+                                    st.rerun()
             
             if st.session_state.outfit:
                 st.markdown("")
@@ -831,7 +882,6 @@ if missing_cats:
                         potential_colors = potential_colors.intersection(allowed)
                     
                     if potential_colors:
-                        # Beregn score for hver potentiel farve
                         color_scores = []
                         for color in potential_colors:
                             total_score = 0
@@ -841,7 +891,6 @@ if missing_cats:
                                     total_score += allowed_list.index(color)
                             color_scores.append((color, total_score))
                         
-                        # Sorter efter laveste score (bedste match)
                         color_scores.sort(key=lambda x: x[1])
                         
                         st.write("Disse farver passer:")
