@@ -775,17 +775,18 @@ if st.session_state.outfit:
                             
                             for cand in cand_dicts:
                                 is_valid, c_score, _ = check_compatibility_basic(cand, base_outfit_items)
-                                s_score, _ = calculate_smart_score(cand, c_score, weather_data)
                                 shade_bonus = calculate_shade_bonus(base_outfit_items + [cand])
-                                s_score -= shade_bonus
+                                
+                                # Udregn den "rene" score uafhængigt af vejret (farvescore - skyggebonus)
+                                pure_score = c_score - shade_bonus
                                 
                                 if cand['id'] == winner_id:
-                                    winner_natural_score = s_score
+                                    winner_natural_score = pure_score
                                     
-                                if s_score < lowest_score:
-                                    lowest_score = s_score
+                                if pure_score < lowest_score:
+                                    lowest_score = pure_score
                             
-                            # Hvis en af taberne havde en lavere (bedre) score end vinderen,
+                            # Hvis en af taberne havde en lavere (bedre) ren score end vinderen,
                             # tvinger vi vinderen op på en 1. plads med minus point.
                             # Hvis vinderen i forvejen var den med lavest score, rører vi intet.
                             if winner_natural_score > lowest_score:
@@ -903,8 +904,8 @@ if missing_cats:
                 # AI Override tjek (-1 point logik)
                 if override_key in ai_overrides and ai_overrides[override_key].get('winner_id') == item['id']:
                     smart_score = ai_overrides[override_key].get('new_score', smart_score)
-                    # Løsning B: Træk også 1 point fra den viste score, så det matcher vinderplaceringen
-                    projected_style_score -= 1.0
+                    # Sæt den viste score til præcis den arvede overskrevne vinder-score (f.eks. 6.0)
+                    projected_style_score = float(smart_score)
                 
                 valid_items_with_score.append((smart_score, item, color_score, weather_penalty, is_synonym, is_part_of_success, is_rejected_exact, is_dead_end, projected_style_score, is_strict_incompatible))
             
