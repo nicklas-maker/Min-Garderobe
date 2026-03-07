@@ -710,6 +710,7 @@ if st.session_state.outfit:
                             display_feedback = display_feedback.replace(cand['id'], c_name)
                         # Gemmer KUN base_outfit_items
                         save_rejected_outfit(base_outfit_items, display_feedback)
+                        load_outfit_feedback_cache.clear()
                         st.session_state.ai_msg = {"type": "error", "text": display_feedback}
                         
                     elif "❌ INGEN VINDER" in raw_feedback.upper():
@@ -718,6 +719,7 @@ if st.session_state.outfit:
                             c_name = cand['analysis'].get('display_name', 'Ukendt')
                             display_feedback = display_feedback.replace(cand['id'], c_name)
                         save_approved_outfit(base_outfit_items, "Godkendt base, men ingen kandidater passede.")
+                        load_outfit_feedback_cache.clear()
                         st.session_state.ai_msg = {"type": "warning", "text": display_feedback}
                         
                     elif "✅ VINDER:" in raw_feedback.upper() or "✅" in raw_feedback:
@@ -767,19 +769,29 @@ if st.session_state.outfit:
                                 begrundelse_valg = begrundelse_valg.replace(cand['id'], full_name)
                                 outfit_bedommelse = outfit_bedommelse.replace(cand['id'], full_name)
 
-                            # 3. Anvend -1 point override reglen
+                            # 3. Anvend den smartere -1 point override regel
                             lowest_score = float('inf')
+                            winner_natural_score = 0
+                            
                             for cand in cand_dicts:
                                 is_valid, c_score, _ = check_compatibility_basic(cand, base_outfit_items)
                                 s_score, _ = calculate_smart_score(cand, c_score, weather_data)
                                 shade_bonus = calculate_shade_bonus(base_outfit_items + [cand])
                                 s_score -= shade_bonus
+                                
+                                if cand['id'] == winner_id:
+                                    winner_natural_score = s_score
+                                    
                                 if s_score < lowest_score:
                                     lowest_score = s_score
                             
-                            new_score = lowest_score - 1
-                            save_ai_override(base_outfit_items, cand_cat, winner_id, new_score)
-                            load_ai_overrides.clear()
+                            # Hvis en af taberne havde en lavere (bedre) score end vinderen,
+                            # tvinger vi vinderen op på en 1. plads med minus point.
+                            # Hvis vinderen i forvejen var den med lavest score, rører vi intet.
+                            if winner_natural_score > lowest_score:
+                                new_score = lowest_score - 1
+                                save_ai_override(base_outfit_items, cand_cat, winner_id, new_score)
+                                load_ai_overrides.clear()
                             
                             # 4. Tilføj vinderen til UI
                             st.session_state.outfit[cand_cat] = winner_item
@@ -787,6 +799,7 @@ if st.session_state.outfit:
                             # 5. GEM KUN DEN RENE BEDØMMELSE I DATABASEN (Samlet Outfit)
                             combined_outfit = base_outfit_items + [winner_item]
                             save_approved_outfit(combined_outfit, outfit_bedommelse)
+                            load_outfit_feedback_cache.clear()
                             
                             # 6. Lav pæn besked til brugeren med begge dele
                             display_msg = f"**Hvorfor den vandt:** {begrundelse_valg}\n\n**Samlet bedømmelse:** {outfit_bedommelse}"
@@ -890,6 +903,8 @@ if missing_cats:
                 # AI Override tjek (-1 point logik)
                 if override_key in ai_overrides and ai_overrides[override_key].get('winner_id') == item['id']:
                     smart_score = ai_overrides[override_key].get('new_score', smart_score)
+                    # Løsning B: Træk også 1 point fra den viste score, så det matcher vinderplaceringen
+                    projected_style_score -= 1.0
                 
                 valid_items_with_score.append((smart_score, item, color_score, weather_penalty, is_synonym, is_part_of_success, is_rejected_exact, is_dead_end, projected_style_score, is_strict_incompatible))
             
