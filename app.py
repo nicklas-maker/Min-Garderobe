@@ -289,7 +289,7 @@ def save_outfit_to_history(outfit_items, weather_data, location, style_score):
         for item in outfit_items:
             update_item_stats(item['id'], current_avg_temp)
 
-# --- OUTFIT MEMORY & AI OVERRIDES ---
+# --- OUTFIT MEMORY, KAMP CACHE & AI OVERRIDES ---
 
 def get_outfit_id(outfit_items):
     """Laver et unikt ID for en kombination af tøj."""
@@ -376,6 +376,32 @@ def load_ai_overrides():
     except:
         pass
     return overrides
+
+def get_match_cache_id(base_outfit_items, category, cand_dicts):
+    """Laver et unikt ID for en specifik kamp mellem kandidater."""
+    base_id = get_outfit_id(base_outfit_items) if base_outfit_items else "empty"
+    cand_ids = "_".join(sorted([c['id'] for c in cand_dicts]))
+    return f"{base_id}_{category}_{cand_ids}"
+
+def get_cached_match(match_id):
+    """Henter resultatet af en tidligere udkæmpet kamp mellem specifikke kandidater."""
+    try:
+        doc = db.collection("ai_match_cache").document(match_id).get()
+        if doc.exists:
+            return doc.to_dict().get("raw_feedback")
+    except:
+        pass
+    return None
+
+def save_match_cache(match_id, raw_feedback):
+    """Gemmer AI's dom af kampen, så vi slipper for at bruge et API-kald igen."""
+    try:
+        db.collection("ai_match_cache").document(match_id).set({
+            "raw_feedback": raw_feedback,
+            "timestamp": firestore.SERVER_TIMESTAMP
+        })
+    except Exception as e:
+        print(f"Fejl ved gemning af match cache: {e}")
 
 # --- SMART SCORE LOGIK ---
 
@@ -716,125 +742,134 @@ if st.session_state.outfit:
             
             if len(cand_dicts) > 0:
                 # --- KANDIDAT-TILSTAND ---
-                with st.spinner(f"Stylisten vurderer dit fundament og de {len(cand_dicts)} kandidater..."):
-                    raw_feedback = get_ai_feedback(base_outfit_items, cand_dicts)
-                    
-                    if "❌ FUNDAMENT AFVIST" in raw_feedback.upper():
-                        display_feedback = raw_feedback
-                        for cand in cand_dicts:
-                            c_name = cand['analysis'].get('display_name', 'Ukendt')
-                            display_feedback = display_feedback.replace(cand['id'], c_name)
-                        # Gemmer KUN base_outfit_items
-                        save_rejected_outfit(base_outfit_items, display_feedback)
-                        load_outfit_feedback_cache.clear()
-                        st.session_state.ai_msg = {"type": "error", "text": display_feedback}
-                        
-                    elif "❌ INGEN VINDER" in raw_feedback.upper():
-                        display_feedback = raw_feedback
-                        for cand in cand_dicts:
-                            c_name = cand['analysis'].get('display_name', 'Ukendt')
-                            display_feedback = display_feedback.replace(cand['id'], c_name)
-                        save_approved_outfit(base_outfit_items, "Godkendt base, men ingen kandidater passede.")
-                        load_outfit_feedback_cache.clear()
-                        st.session_state.ai_msg = {"type": "warning", "text": display_feedback}
-                        
-                    elif "✅ VINDER:" in raw_feedback.upper() or "✅" in raw_feedback:
-                        winner_id = None
-                        winner_item = None
-                        
-                        match = re.search(r'✅\s*VINDER:\s*([A-Za-z0-9_-]+)', raw_feedback, re.IGNORECASE)
-                        if match:
-                            extracted_id = match.group(1).strip()
-                            for cand in cand_dicts:
-                                if cand['id'] == extracted_id:
-                                    winner_id = cand['id']
-                                    winner_item = cand
-                                    break
-                        
-                        # Fallback (hvis regex fejler)
-                        if not winner_item:
-                            for cand in cand_dicts:
-                                if f"VINDER: {cand['id']}" in raw_feedback:
-                                    winner_id = cand['id']
-                                    winner_item = cand
-                                    break
-                        
-                        if winner_item:
-                            # 1. Træk begrundelse og den samlede dom ud
-                            begrundelse_valg = ""
-                            outfit_bedommelse = ""
-                            
-                            match_begrundelse = re.search(r'BEGRUNDELSE_VALG:\s*(.*?)(?=OUTFIT_BEDØMMELSE:|$)', raw_feedback, re.DOTALL | re.IGNORECASE)
-                            if match_begrundelse:
-                                begrundelse_valg = match_begrundelse.group(1).strip()
-                                
-                            match_bedommelse = re.search(r'OUTFIT_BEDØMMELSE:\s*(.*)', raw_feedback, re.DOTALL | re.IGNORECASE)
-                            if match_bedommelse:
-                                outfit_bedommelse = match_bedommelse.group(1).strip()
-                            
-                            if not outfit_bedommelse: # Fallback hvis AI laver kludder
-                                outfit_bedommelse = raw_feedback
-                            
-                            # 2. Udskift IDs med rigtige navne i teksterne
-                            for cand in cand_dicts:
-                                c_name = cand['analysis'].get('display_name', 'Ukendt')
-                                c_shade = cand['analysis'].get('shade', '')
-                                c_color = cand['analysis'].get('primary_color', '')
-                                full_name = f"{c_name} ({c_shade} {c_color})"
-                                
-                                begrundelse_valg = begrundelse_valg.replace(cand['id'], full_name)
-                                outfit_bedommelse = outfit_bedommelse.replace(cand['id'], full_name)
+                match_id = get_match_cache_id(base_outfit_items, cand_cat, cand_dicts)
+                raw_feedback = get_cached_match(match_id)
+                
+                if raw_feedback:
+                    st.toast("Genbruger tidligere AI-vurdering for præcis denne kamp!", icon="⚡")
+                else:
+                    with st.spinner(f"Stylisten vurderer dit fundament og de {len(cand_dicts)} kandidater..."):
+                        raw_feedback = get_ai_feedback(base_outfit_items, cand_dicts)
+                        # Gem resultatet, hvis det ikke var en fejl
+                        if "AI Fejl:" not in raw_feedback and "⚠️" not in raw_feedback:
+                            save_match_cache(match_id, raw_feedback)
 
-                            # 3. Anvend den smartere -1 point override regel (Løsning 2)
-                            lowest_score = float('inf')
-                            winner_current_score = 0
-                            
-                            # Indlæs overskrevne scores for at lade vinderen arve ud fra NUVÆRENDE point
-                            ai_overrides = load_ai_overrides()
-                            base_outfit_id = get_outfit_id(base_outfit_items) if base_outfit_items else "empty"
-                            override_key = f"{base_outfit_id}_{cand_cat}"
-                            cat_overrides = ai_overrides.get(override_key, {})
-                            
-                            for cand in cand_dicts:
-                                # Udregn den rene score først
-                                pure_score = calculate_outfit_style_score(base_outfit_items + [cand])
-                                
-                                # Tjek om kandidaten allerede har en override-score for dette base-outfit
-                                cand_current_score = cat_overrides.get(cand['id'], pure_score)
-                                
-                                if cand['id'] == winner_id:
-                                    winner_current_score = cand_current_score
-                                    
-                                if cand_current_score < lowest_score:
-                                    lowest_score = cand_current_score
-                            
-                            # Hvis vinderen har en DÅRLIGERE (højere) nuværende score end den bedste taber,
-                            # så arver vinderen taberens score minus 1 point!
-                            if winner_current_score > lowest_score:
-                                new_score = lowest_score - 1
-                                save_ai_override(base_outfit_items, cand_cat, winner_id, new_score)
-                                load_ai_overrides.clear()
-                            
-                            # 4. Tilføj vinderen til UI
-                            st.session_state.outfit[cand_cat] = winner_item
-                            
-                            # 5. GEM KUN DEN RENE BEDØMMELSE I DATABASEN (Samlet Outfit)
-                            combined_outfit = base_outfit_items + [winner_item]
-                            save_approved_outfit(combined_outfit, outfit_bedommelse)
-                            load_outfit_feedback_cache.clear()
-                            
-                            # 6. Lav pæn besked til brugeren med begge dele
-                            display_msg = f"**Hvorfor den vandt:** {begrundelse_valg}\n\n**Samlet bedømmelse:** {outfit_bedommelse}"
-                            st.session_state.ai_msg = {"type": "success", "text": display_msg}
-                            
-                        else:
-                            st.session_state.ai_msg = {"type": "warning", "text": f"Kunne ikke finde vinder-ID'et i svaret:\n\n{raw_feedback}"}
-                    
-                    # Fjern flueben, så de ikke hænger fast til næste gang
+                if "❌ FUNDAMENT AFVIST" in raw_feedback.upper():
+                    display_feedback = raw_feedback
                     for cand in cand_dicts:
-                        st.session_state[f"cand_{cand_cat}_{cand['id']}"] = False
+                        c_name = cand['analysis'].get('display_name', 'Ukendt')
+                        display_feedback = display_feedback.replace(cand['id'], c_name)
+                    # Gemmer KUN base_outfit_items
+                    save_rejected_outfit(base_outfit_items, display_feedback)
+                    load_outfit_feedback_cache.clear()
+                    st.session_state.ai_msg = {"type": "error", "text": display_feedback}
                     
-                    st.rerun()
+                elif "❌ INGEN VINDER" in raw_feedback.upper():
+                    display_feedback = raw_feedback
+                    for cand in cand_dicts:
+                        c_name = cand['analysis'].get('display_name', 'Ukendt')
+                        display_feedback = display_feedback.replace(cand['id'], c_name)
+                    save_approved_outfit(base_outfit_items, "Godkendt base, men ingen kandidater passede.")
+                    load_outfit_feedback_cache.clear()
+                    st.session_state.ai_msg = {"type": "warning", "text": display_feedback}
+                    
+                elif "✅ VINDER:" in raw_feedback.upper() or "✅" in raw_feedback:
+                    winner_id = None
+                    winner_item = None
+                    
+                    match = re.search(r'✅\s*VINDER:\s*([A-Za-z0-9_-]+)', raw_feedback, re.IGNORECASE)
+                    if match:
+                        extracted_id = match.group(1).strip()
+                        for cand in cand_dicts:
+                            if cand['id'] == extracted_id:
+                                winner_id = cand['id']
+                                winner_item = cand
+                                break
+                    
+                    # Fallback (hvis regex fejler)
+                    if not winner_item:
+                        for cand in cand_dicts:
+                            if f"VINDER: {cand['id']}" in raw_feedback:
+                                winner_id = cand['id']
+                                winner_item = cand
+                                break
+                    
+                    if winner_item:
+                        # 1. Træk begrundelse og den samlede dom ud
+                        begrundelse_valg = ""
+                        outfit_bedommelse = ""
+                        
+                        match_begrundelse = re.search(r'BEGRUNDELSE_VALG:\s*(.*?)(?=OUTFIT_BEDØMMELSE:|$)', raw_feedback, re.DOTALL | re.IGNORECASE)
+                        if match_begrundelse:
+                            begrundelse_valg = match_begrundelse.group(1).strip()
+                            
+                        match_bedommelse = re.search(r'OUTFIT_BEDØMMELSE:\s*(.*)', raw_feedback, re.DOTALL | re.IGNORECASE)
+                        if match_bedommelse:
+                            outfit_bedommelse = match_bedommelse.group(1).strip()
+                        
+                        if not outfit_bedommelse: # Fallback hvis AI laver kludder
+                            outfit_bedommelse = raw_feedback
+                        
+                        # 2. Udskift IDs med rigtige navne i teksterne
+                        for cand in cand_dicts:
+                            c_name = cand['analysis'].get('display_name', 'Ukendt')
+                            c_shade = cand['analysis'].get('shade', '')
+                            c_color = cand['analysis'].get('primary_color', '')
+                            full_name = f"{c_name} ({c_shade} {c_color})"
+                            
+                            begrundelse_valg = begrundelse_valg.replace(cand['id'], full_name)
+                            outfit_bedommelse = outfit_bedommelse.replace(cand['id'], full_name)
+
+                        # 3. Anvend den smartere -1 point override regel (Løsning 2)
+                        lowest_score = float('inf')
+                        winner_current_score = 0
+                        
+                        # Indlæs overskrevne scores for at lade vinderen arve ud fra NUVÆRENDE point
+                        ai_overrides = load_ai_overrides()
+                        base_outfit_id = get_outfit_id(base_outfit_items) if base_outfit_items else "empty"
+                        override_key = f"{base_outfit_id}_{cand_cat}"
+                        cat_overrides = ai_overrides.get(override_key, {})
+                        
+                        for cand in cand_dicts:
+                            # Udregn den rene score først
+                            pure_score = calculate_outfit_style_score(base_outfit_items + [cand])
+                            
+                            # Tjek om kandidaten allerede har en override-score for dette base-outfit
+                            cand_current_score = cat_overrides.get(cand['id'], pure_score)
+                            
+                            if cand['id'] == winner_id:
+                                winner_current_score = cand_current_score
+                                
+                            if cand_current_score < lowest_score:
+                                lowest_score = cand_current_score
+                        
+                        # Hvis vinderen har en DÅRLIGERE (højere) nuværende score end den bedste taber,
+                        # så arver vinderen taberens score minus 1 point!
+                        if winner_current_score > lowest_score:
+                            new_score = lowest_score - 1
+                            save_ai_override(base_outfit_items, cand_cat, winner_id, new_score)
+                            load_ai_overrides.clear()
+                        
+                        # 4. Tilføj vinderen til UI
+                        st.session_state.outfit[cand_cat] = winner_item
+                        
+                        # 5. GEM KUN DEN RENE BEDØMMELSE I DATABASEN (Samlet Outfit)
+                        combined_outfit = base_outfit_items + [winner_item]
+                        save_approved_outfit(combined_outfit, outfit_bedommelse)
+                        load_outfit_feedback_cache.clear()
+                        
+                        # 6. Lav pæn besked til brugeren med begge dele
+                        display_msg = f"**Hvorfor den vandt:** {begrundelse_valg}\n\n**Samlet bedømmelse:** {outfit_bedommelse}"
+                        st.session_state.ai_msg = {"type": "success", "text": display_msg}
+                        
+                    else:
+                        st.session_state.ai_msg = {"type": "warning", "text": f"Kunne ikke finde vinder-ID'et i svaret:\n\n{raw_feedback}"}
+                
+                # Fjern flueben, så de ikke hænger fast til næste gang
+                for cand in cand_dicts:
+                    st.session_state[f"cand_{cand_cat}_{cand['id']}"] = False
+                
+                st.rerun()
             else:
                 # --- STANDARD-TILSTAND (Ingen kandidater valgt) ---
                 with st.spinner("Stylisten kigger på dit tøj..."):
