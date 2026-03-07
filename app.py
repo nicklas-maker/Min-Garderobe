@@ -337,10 +337,11 @@ def load_outfit_feedback_cache():
     return approved, rejected, approved_sets
 
 def save_ai_override(base_outfit_items, category, winner_id, new_score):
-    """Gemmer den overskrevne score for et specifikt outfit + kategori valgt af AI."""
+    """Gemmer den overskrevne score og beholder alle vindere."""
     try:
         base_id = get_outfit_id(base_outfit_items) if base_outfit_items else "empty"
-        doc_id = f"{base_id}_{category}"
+        # BEMÆRK: ID'et indeholder nu winner_id, så vi ikke overskriver gamle vindere!
+        doc_id = f"{base_id}_{category}_{winner_id}"
         db.collection("ai_score_overrides").document(doc_id).set({
             "base_outfit": base_id,
             "category": category,
@@ -353,11 +354,25 @@ def save_ai_override(base_outfit_items, category, winner_id, new_score):
 
 @st.cache_data(ttl=600)
 def load_ai_overrides():
+    """Henter alle vindere og grupperer dem efter base_outfit og kategori."""
     overrides = {}
     try:
         docs = db.collection("ai_score_overrides").stream()
         for doc in docs:
-            overrides[doc.id] = doc.to_dict()
+            data = doc.to_dict()
+            base_id = data.get("base_outfit")
+            cat = data.get("category")
+            w_id = data.get("winner_id")
+            n_score = data.get("new_score")
+            
+            if not base_id or not cat or not w_id:
+                continue
+                
+            key = f"{base_id}_{cat}"
+            if key not in overrides:
+                overrides[key] = {}
+            # Tilføj vinderen til listen for denne specifikke tøjkombination
+            overrides[key][w_id] = n_score
     except:
         pass
     return overrides
@@ -583,6 +598,7 @@ with st.sidebar:
     with st.expander("📖 Ikoner", expanded=False):
         st.markdown("""
         <small>
+        👑 : Forsvarende Mester (Bedste AI-score)<br>
         ⭐ : Perfekt<br>
         1️⃣ : Godt<br>
         2️⃣ : Fint<br>
@@ -769,23 +785,32 @@ if st.session_state.outfit:
                                 begrundelse_valg = begrundelse_valg.replace(cand['id'], full_name)
                                 outfit_bedommelse = outfit_bedommelse.replace(cand['id'], full_name)
 
-                            # 3. Anvend den smartere -1 point override regel
+                            # 3. Anvend den smartere -1 point override regel (Løsning 2)
                             lowest_score = float('inf')
-                            winner_natural_score = 0
+                            winner_current_score = 0
+                            
+                            # Indlæs overskrevne scores for at lade vinderen arve ud fra NUVÆRENDE point
+                            ai_overrides = load_ai_overrides()
+                            base_outfit_id = get_outfit_id(base_outfit_items) if base_outfit_items else "empty"
+                            override_key = f"{base_outfit_id}_{cand_cat}"
+                            cat_overrides = ai_overrides.get(override_key, {})
                             
                             for cand in cand_dicts:
-                                # Udregn den rene score PRÆCIS som den ville blive vist
+                                # Udregn den rene score først
                                 pure_score = calculate_outfit_style_score(base_outfit_items + [cand])
                                 
+                                # Tjek om kandidaten allerede har en override-score for dette base-outfit
+                                cand_current_score = cat_overrides.get(cand['id'], pure_score)
+                                
                                 if cand['id'] == winner_id:
-                                    winner_natural_score = pure_score
+                                    winner_current_score = cand_current_score
                                     
-                                if pure_score < lowest_score:
-                                    lowest_score = pure_score
+                                if cand_current_score < lowest_score:
+                                    lowest_score = cand_current_score
                             
-                            # Hvis en af taberne havde en lavere (bedre) ren score end vinderen,
-                            # tvinger vi vinderen op på en 1. plads med minus point.
-                            if winner_natural_score > lowest_score:
+                            # Hvis vinderen har en DÅRLIGERE (højere) nuværende score end den bedste taber,
+                            # så arver vinderen taberens score minus 1 point!
+                            if winner_current_score > lowest_score:
                                 new_score = lowest_score - 1
                                 save_ai_override(base_outfit_items, cand_cat, winner_id, new_score)
                                 load_ai_overrides.clear()
@@ -853,7 +878,15 @@ if missing_cats:
             
             current_ids = [item['id'] for item in current_selection_list]
             base_outfit_id = get_outfit_id(current_selection_list) if current_selection_list else "empty"
+            
+            # Find alle overrides og udnævn den forsvarende mester
             override_key = f"{base_outfit_id}_{cat}"
+            cat_overrides = ai_overrides.get(override_key, {})
+            
+            champion_id = None
+            if cat_overrides:
+                # Mesteren er den med det absolut laveste pointtal (værdi) for denne base/kategori
+                champion_id = min(cat_overrides, key=cat_overrides.get)
 
             # 1. Beregninger
             for item in all_items:
@@ -881,10 +914,14 @@ if missing_cats:
                 if st.session_state.outfit:
                     is_dead_end = check_dead_end(item, current_selection_list, wardrobe)
                 
-                # AI Override tjek (-1 point logik)
-                if override_key in ai_overrides and ai_overrides[override_key].get('winner_id') == item['id']:
-                    # Vinderen overskriver den synlige score til den vundne score
-                    projected_style_score = float(ai_overrides[override_key].get('new_score', projected_style_score))
+                # Hvis genstanden er en af de gemte vindere for dette outfit, overskriv dens score!
+                if item['id'] in cat_overrides:
+                    projected_style_score = float(cat_overrides[item['id']])
+                
+                # Tjek om vi er the reigning champion
+                is_champion = False
+                if champion_id and item['id'] == champion_id:
+                    is_champion = True
                 
                 # Sortering er nu defineret som: Synlig Pointscore + Vejrpoint
                 smart_score = projected_style_score + weather_penalty
@@ -904,14 +941,14 @@ if missing_cats:
                 if is_rejected_exact:
                     smart_score += REJECTION_PENALTY
                     
-                valid_items_with_score.append((smart_score, item, color_score, weather_penalty, is_synonym, is_part_of_success, is_rejected_exact, is_dead_end, projected_style_score, is_strict_incompatible))
+                valid_items_with_score.append((smart_score, item, color_score, weather_penalty, is_synonym, is_part_of_success, is_rejected_exact, is_dead_end, projected_style_score, is_strict_incompatible, is_champion))
             
             valid_items_with_score.sort(key=lambda x: x[0])
             
             if not valid_items_with_score:
                 st.error(f"Ingen {CATEGORY_LABELS[cat].lower()} tilgængelig!")
             else:
-                for idx, (smart_score, item, color_score, penalty, is_synonym, is_part_of_success, is_rejected_exact, is_dead_end, projected_style_score, is_strict_incompatible) in enumerate(valid_items_with_score):
+                for idx, (smart_score, item, color_score, penalty, is_synonym, is_part_of_success, is_rejected_exact, is_dead_end, projected_style_score, is_strict_incompatible, is_champion) in enumerate(valid_items_with_score):
                     if idx % 3 == 0:
                         img_cols = st.columns(3)
                     
@@ -933,6 +970,7 @@ if missing_cats:
                         
                         # --- IKON LOGIK ---
                         icon_prefix = ""
+                        if is_champion: icon_prefix += "👑 "
                         if is_strict_incompatible: icon_prefix += "🚫 "
                         if is_dead_end: icon_prefix += "⚠️ "
                         
@@ -941,7 +979,7 @@ if missing_cats:
                         elif is_rejected_exact:
                             icon_prefix += "❌ "
                         
-                        if not is_strict_incompatible:
+                        if not is_strict_incompatible and not is_champion:
                             if color_score == 0: icon_prefix += "⭐ "      
                             elif color_score == 1: icon_prefix += "1️⃣ "     
                             elif 2 <= color_score <= 3: icon_prefix += "2️⃣ "     
