@@ -650,6 +650,7 @@ with st.sidebar:
         st.markdown("""
         <small>
         👑 : Forsvarende Mester (Bedste AI-score)<br>
+        🏳️ : Tabte til mesteren<br>
         ⭐ : Perfekt<br>
         1️⃣ : Godt<br>
         2️⃣ : Fint<br>
@@ -996,9 +997,35 @@ if missing_cats:
             cat_overrides = ai_overrides.get(override_key, {})
             
             champion_id = None
+            loser_ids = set()
+            
             if cat_overrides:
                 # Mesteren er den med det absolut laveste pointtal (værdi) for denne base/kategori
                 champion_id = min(cat_overrides, key=cat_overrides.get)
+                
+                # NYT: Find alle tabere til denne mester fra historikken
+                matches = load_match_cache()
+                prefix = f"{base_outfit_id}_{cat}_"
+                for m_id, feedback in matches.items():
+                    if m_id.startswith(prefix):
+                        cand_part = m_id[len(prefix):]
+                        past_cand_ids = cand_part.split('_')
+                        
+                        winner_id = None
+                        match_winner = re.search(r'✅\s*VINDER:\s*([A-Za-z0-9_-]+)', feedback, re.IGNORECASE)
+                        if match_winner:
+                            winner_id = match_winner.group(1).strip()
+                        else:
+                            for cid in past_cand_ids:
+                                if f"VINDER: {cid}" in feedback:
+                                    winner_id = cid
+                                    break
+                        
+                        # Hvis vores mester vandt denne specifikke kamp, så er de andre tabere
+                        if winner_id == champion_id:
+                            for cid in past_cand_ids:
+                                if cid != champion_id:
+                                    loser_ids.add(cid)
 
             # 1. Beregninger
             for item in all_items:
@@ -1034,6 +1061,9 @@ if missing_cats:
                 is_champion = False
                 if champion_id and item['id'] == champion_id:
                     is_champion = True
+                    
+                # NYT: Tjek om den er en taber til mesteren
+                is_loser = item['id'] in loser_ids
                 
                 # Sortering er nu defineret som: Synlig Pointscore + Vejrpoint
                 smart_score = projected_style_score + weather_penalty
@@ -1053,14 +1083,14 @@ if missing_cats:
                 if is_rejected_exact:
                     smart_score += REJECTION_PENALTY
                     
-                valid_items_with_score.append((smart_score, item, color_score, weather_penalty, is_synonym, is_part_of_success, is_rejected_exact, is_dead_end, projected_style_score, is_strict_incompatible, is_champion))
+                valid_items_with_score.append((smart_score, item, color_score, weather_penalty, is_synonym, is_part_of_success, is_rejected_exact, is_dead_end, projected_style_score, is_strict_incompatible, is_champion, is_loser))
             
             valid_items_with_score.sort(key=lambda x: x[0])
             
             if not valid_items_with_score:
                 st.error(f"Ingen {CATEGORY_LABELS[cat].lower()} tilgængelig!")
             else:
-                for idx, (smart_score, item, color_score, penalty, is_synonym, is_part_of_success, is_rejected_exact, is_dead_end, projected_style_score, is_strict_incompatible, is_champion) in enumerate(valid_items_with_score):
+                for idx, (smart_score, item, color_score, penalty, is_synonym, is_part_of_success, is_rejected_exact, is_dead_end, projected_style_score, is_strict_incompatible, is_champion, is_loser) in enumerate(valid_items_with_score):
                     if idx % 3 == 0:
                         img_cols = st.columns(3)
                     
@@ -1083,6 +1113,7 @@ if missing_cats:
                         # --- IKON LOGIK ---
                         icon_prefix = ""
                         if is_champion: icon_prefix += "👑 "
+                        if is_loser: icon_prefix += "🏳️ "
                         if is_strict_incompatible: icon_prefix += "🚫 "
                         if is_dead_end: icon_prefix += "⚠️ "
                         
@@ -1091,7 +1122,8 @@ if missing_cats:
                         elif is_rejected_exact:
                             icon_prefix += "❌ "
                         
-                        if not is_strict_incompatible and not is_champion:
+                        # Vis standardpoint-ikoner, medmindre den er direkte inkompatibel.
+                        if not is_strict_incompatible:
                             if color_score == 0: icon_prefix += "⭐ "      
                             elif color_score == 1: icon_prefix += "1️⃣ "     
                             elif 2 <= color_score <= 3: icon_prefix += "2️⃣ "     
