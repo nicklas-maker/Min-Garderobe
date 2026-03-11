@@ -916,12 +916,16 @@ if st.session_state.outfit:
                             if cand_current_score < lowest_score:
                                 lowest_score = cand_current_score
                         
-                        # Hvis vinderen har en DÅRLIGERE (højere) nuværende score end den bedste taber,
-                        # så arver vinderen taberens score minus 1 point!
+                        # NY LOGIK: Reducer KUN scoren, hvis vinderen IKKE allerede var bedst.
+                        # Ellers beholder den bare sine nuværende point.
                         if winner_current_score > lowest_score:
                             new_score = lowest_score - 1
-                            save_ai_override(base_outfit_items, cand_cat, winner_id, new_score)
-                            load_ai_overrides.clear()
+                        else:
+                            new_score = winner_current_score
+                            
+                        # ALTID gem vinderen i databasen, så den registreres officielt og udløser 👑 ikonet
+                        save_ai_override(base_outfit_items, cand_cat, winner_id, new_score)
+                        load_ai_overrides.clear()
                         
                         # 4. Tilføj vinderen til UI
                         st.session_state.outfit[cand_cat] = winner_item
