@@ -416,6 +416,18 @@ def save_match_cache(match_id, raw_feedback):
     except Exception as e:
         print(f"Fejl ved gemning af match cache: {e}")
 
+@st.cache_data(ttl=600)
+def load_match_cache():
+    """Henter hele kamphistorikken ind i hukommelsen for hurtig eliminering."""
+    matches = {}
+    try:
+        docs = db.collection("ai_match_cache").stream()
+        for doc in docs:
+            matches[doc.id] = doc.to_dict().get("raw_feedback")
+    except:
+        pass
+    return matches
+
 # --- SMART SCORE LOGIK ---
 
 def calculate_match_score(target_color, allowed_list):
@@ -761,11 +773,59 @@ if st.session_state.outfit:
                 if raw_feedback:
                     st.toast("Genbruger tidligere AI-vurdering for præcis denne kamp!", icon="⚡")
                 else:
-                    with st.spinner(f"Stylisten vurderer dit fundament og de {len(cand_dicts)} kandidater..."):
-                        raw_feedback = get_ai_feedback(base_outfit_items, cand_dicts, base_already_approved=is_approved_before)
-                        # Gem resultatet, hvis det ikke var en fejl
-                        if "AI Fejl:" not in raw_feedback and "⚠️" not in raw_feedback:
-                            save_match_cache(match_id, raw_feedback)
+                    # --- NY ELIMINERINGS-LOGIK ---
+                    matches = load_match_cache()
+                    base_id = get_outfit_id(base_outfit_items) if base_outfit_items else "empty"
+                    prefix = f"{base_id}_{cand_cat}_"
+                    
+                    eliminated_ids = set()
+                    current_ids = [c['id'] for c in cand_dicts]
+                    last_winning_feedback = None
+                    
+                    for m_id, feedback in matches.items():
+                        if m_id.startswith(prefix):
+                            cand_part = m_id[len(prefix):]
+                            past_cand_ids = cand_part.split('_')
+                            
+                            winner_id = None
+                            match = re.search(r'✅\s*VINDER:\s*([A-Za-z0-9_-]+)', feedback, re.IGNORECASE)
+                            if match:
+                                winner_id = match.group(1).strip()
+                            else:
+                                for cid in past_cand_ids:
+                                    if f"VINDER: {cid}" in feedback:
+                                        winner_id = cid
+                                        break
+                            
+                            # Hvis en tidligere vinder er valgt nu, slår den sine tidligere tabere ud
+                            if winner_id and winner_id in current_ids:
+                                for cid in past_cand_ids:
+                                    if cid != winner_id and cid in current_ids:
+                                        eliminated_ids.add(cid)
+                                        last_winning_feedback = feedback
+                    
+                    if eliminated_ids:
+                        cand_dicts = [c for c in cand_dicts if c['id'] not in eliminated_ids]
+                        st.toast(f"Eliminerede {len(eliminated_ids)} tidligere taber(e) for at spare tid og penge!", icon="✂️")
+                        
+                        # Tjek cache IGEN med de overlevende kandidater
+                        match_id = get_match_cache_id(base_outfit_items, cand_cat, cand_dicts)
+                        raw_feedback = get_cached_match(match_id)
+                        
+                        if raw_feedback:
+                            st.toast("Fandt et gemt resultat for de overlevende kandidater!", icon="⚡")
+                        elif len(cand_dicts) == 1 and last_winning_feedback:
+                            raw_feedback = last_winning_feedback
+                            st.toast("Kun 1 kandidat overlevede elimineringen!", icon="🏆")
+
+                    # --- AI KALD (hvis stadig nødvendigt) ---
+                    if not raw_feedback:
+                        with st.spinner(f"Stylisten vurderer dit fundament og de {len(cand_dicts)} kandidater..."):
+                            raw_feedback = get_ai_feedback(base_outfit_items, cand_dicts, base_already_approved=is_approved_before)
+                            # Gem resultatet, hvis det ikke var en fejl
+                            if "AI Fejl:" not in raw_feedback and "⚠️" not in raw_feedback:
+                                save_match_cache(match_id, raw_feedback)
+                                load_match_cache.clear() # Ryd cachen så næste tryk har nyeste data
 
                 if "❌ FUNDAMENT AFVIST" in raw_feedback.upper():
                     display_feedback = raw_feedback
